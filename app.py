@@ -44,7 +44,7 @@ st.title("🏭 ERP Predictivo & Agente Autónomo de Operaciones")
 st.caption("Sistema de monitoreo continuo, detección de anomalías en maquinaria y auditoría financiera inteligente para PYMES e Industrias.")
 
 # ---------------------------------------------------------
-# INICIALIZACIÓN DE ESTADOS PERSISTENTES
+# INICIALIZACIÓN DE ESTADOS PERSISTENTES (PUNTO CERO / ESTADO LIMPIO)
 # ---------------------------------------------------------
 if "empresa_nombre" not in st.session_state:
     st.session_state.empresa_nombre = "Industrias Innovación S.L."
@@ -60,21 +60,21 @@ if "costos_fijos" not in st.session_state:
         "Licencias y Seguros": 1200.0
     }
 
+# Maquinaria iniciada en nivel de desgaste plano/bajo (10%)
 if "maquinaria" not in st.session_state:
     st.session_state.maquinaria = {
-        "Prensa Hidráulica H-500": {"desgaste": 22.0, "temp_c": 65.0, "vibracion_hz": 12.0, "horas": 450, "costo_reparacion": 2500.0, "costo_fallo_catastrofico": 18000.0},
-        "Línea de Corte Láser CNC": {"desgaste": 48.0, "temp_c": 72.0, "vibracion_hz": 18.0, "horas": 890, "costo_reparacion": 4000.0, "costo_fallo_catastrofico": 32000.0},
-        "Compresor Industrial B-2": {"desgaste": 15.0, "temp_c": 58.0, "vibracion_hz": 8.0, "horas": 210, "costo_reparacion": 1200.0, "costo_fallo_catastrofico": 9000.0}
+        "Prensa Hidráulica H-500": {"desgaste": 10.0, "temp_c": 50.0, "vibracion_hz": 10.0, "horas": 0, "costo_reparacion": 2500.0, "costo_fallo_catastrofico": 18000.0},
+        "Línea de Corte Láser CNC": {"desgaste": 10.0, "temp_c": 50.0, "vibracion_hz": 10.0, "horas": 0, "costo_reparacion": 4000.0, "costo_fallo_catastrofico": 32000.0},
+        "Compresor Industrial B-2": {"desgaste": 10.0, "temp_c": 50.0, "vibracion_hz": 10.0, "horas": 0, "costo_reparacion": 1200.0, "costo_fallo_catastrofico": 9000.0}
     }
 
+# Historial financiero que arranca sólo con la foto inicial (sin variaciones previas)
 if "historial_finanzas" not in st.session_state:
-    # 'h' minúscula para compatibilidad con versiones recientes de pandas
-    fechas = pd.date_range(end=pd.Timestamp.now(), periods=15, freq="h")
     st.session_state.historial_finanzas = pd.DataFrame({
-        "Tiempo": fechas,
-        "Capital": [150000.0 + i * random.randint(-500, 2000) for i in range(15)],
-        "Ingresos": [random.randint(4000, 12000) for _ in range(15)],
-        "Costos_Variables": [random.randint(1500, 5000) for _ in range(15)]
+        "Tiempo": [pd.Timestamp.now()],
+        "Capital": [150000.0],
+        "Ingresos": [0.0],
+        "Costos_Variables": [0.0]
     })
 
 if "historial_alertas" not in st.session_state:
@@ -230,7 +230,11 @@ with tab_dash:
     k1, k2, k3, k4 = st.columns(4)
     ult_ingreso = st.session_state.historial_finanzas["Ingresos"].iloc[-1]
     
-    k1.metric("Capital Disponible", f"{st.session_state.capital:,.2f} €", f"{st.session_state.historial_finanzas['Capital'].iloc[-1] - st.session_state.historial_finanzas['Capital'].iloc[-2]:,.2f} €")
+    delta_capital = 0.0
+    if len(st.session_state.historial_finanzas) > 1:
+        delta_capital = st.session_state.historial_finanzas['Capital'].iloc[-1] - st.session_state.historial_finanzas['Capital'].iloc[-2]
+    
+    k1.metric("Capital Disponible", f"{st.session_state.capital:,.2f} €", f"{delta_capital:,.2f} €")
     k2.metric("Último Ingreso", f"{ult_ingreso:,.2f} €")
     k3.metric("Gastos Fijos Mensuales", f"{sum(st.session_state.costos_fijos.values()):,.2f} €")
     
