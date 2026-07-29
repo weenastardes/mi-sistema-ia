@@ -80,7 +80,7 @@ with col_apa:
 # LÓGICA DE DETECCIÓN, PREDICCIÓN E IA
 # ---------------------------------------------------------
 def analizar_y_predecir_con_gemini(api_key, df, pico_detectado, porcentaje_desviacion):
-    """Llama a Gemini 1.5 Flash para analizar la causa del pico y predecir tendencias."""
+    """Llama a Gemini 2.0 Flash para analizar la causa del pico y predecir tendencias."""
     client = genai.Client(api_key=api_key)
     
     ultimos_datos = df.tail(10).to_string()
@@ -104,7 +104,7 @@ def analizar_y_predecir_con_gemini(api_key, df, pico_detectado, porcentaje_desvi
     
     # Modelo oficial y activo de Google Gemini
     response = client.models.generate_content(
-        model="gemini-1.5-flash",
+        model="gemini-2.0-flash",
         contents=prompt
     )
     return response.text
