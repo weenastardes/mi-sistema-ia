@@ -68,7 +68,8 @@ if "maquinaria" not in st.session_state:
     }
 
 if "historial_finanzas" not in st.session_state:
-   fechas = pd.date_range(end=pd.Timestamp.now(), periods=15, freq="h")
+    # 'h' minúscula para compatibilidad con versiones recientes de pandas
+    fechas = pd.date_range(end=pd.Timestamp.now(), periods=15, freq="h")
     st.session_state.historial_finanzas = pd.DataFrame({
         "Tiempo": fechas,
         "Capital": [150000.0 + i * random.randint(-500, 2000) for i in range(15)],
