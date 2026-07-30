@@ -1,6 +1,4 @@
 streamlit
-google-genai
 supabase
 pandas
-numpy
-plotly
+requests
