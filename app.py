@@ -7,16 +7,14 @@ from supabase import create_client
 # CONFIGURACIÓN DE LA PÁGINA
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Industrias Innovación S.L. - Control 24/7",
+    page_title="Industrias Innovación S.L. - Control Avanzado",
     page_icon="🏭",
     layout="wide"
 )
 
-# Estilo visual general corporativo
 st.markdown("""
     <style>
         .main { background-color: #0e1117; }
-        .metric-card { background-color: #161b22; padding: 20px; border-radius: 10px; border: 1px solid #30363d; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -35,16 +33,53 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# CARGA DE DATOS DESDE LA BASE DE DATOS
+# BARRA LATERAL: PANEL DE PRUEBAS Y SIMULACIÓN MANUAL
+# ---------------------------------------------------------
+st.sidebar.header("⚙️ Panel de Control y Pruebas")
+st.sidebar.markdown("Fuerza parámetros al límite para comprobar el comportamiento del sistema y las alertas.")
+
+modo_simulacion = st.sidebar.radio("Modo de Operación:", ["Automático (Supabase)", "Forzar Fallo Manual / Extremo"])
+
+capital_manual = 150000.0
+desgaste_manual = 10.0
+ingreso_manual = 5000.0
+
+if modo_simulacion == "Forzar Fallo Manual / Extremo":
+    st.sidebar.subheader("🎛️ Parámetros de Estrés")
+    capital_manual = st.sidebar.number_input("Capital Operativo (€)", value=125000.0, step=1000.0)
+    desgaste_manual = st.sidebar.slider("Nivel de Desgaste CNC (%)", 0.0, 100.0, 85.0, step=1.0)
+    ingreso_manual = st.sidebar.number_input("Ingreso del Turno (€)", value=1200.0, step=100.0)
+    
+    if st.sidebar.button("🚀 Aplicar Estado Forzado a Base de Datos"):
+        if supabase:
+            try:
+                supabase.table("estado_empresa").insert({
+                    "capital": capital_manual,
+                    "ingreso": ingreso_manual,
+                    "desgaste_cnc": desgaste_manual
+                }).execute()
+                st.sidebar.success("¡Estado crítico inyectado con éxito en Supabase!")
+                st.rerun()
+            except Exception as e:
+                st.sidebar.error(f"Error al insertar: {e}")
+        else:
+            st.sidebar.error("No hay conexión con Supabase configurada.")
+
+st.sidebar.divider()
+if st.sidebar.button("🔄 Refrescar Datos desde BD"):
+    st.cache_resource.clear()
+    st.rerun()
+
+# ---------------------------------------------------------
+# CARGA DE DATOS DESDE SUPABASE
 # ---------------------------------------------------------
 def cargar_datos():
     if not supabase:
-        # Datos simulados por defecto si no hay conexión para que la app no rompa visualmente
         return pd.DataFrame({
-            "created_at": ["2026-06-07 10:00:00", "2026-06-07 10:05:00"],
-            "capital": [150000.0, 154500.0],
-            "ingreso": [5000.0, 6200.0],
-            "desgaste_cnc": [10.0, 11.2]
+            "created_at": ["2026-06-07 10:00:00"],
+            "capital": [150000.0],
+            "ingreso": [5000.0],
+            "desgaste_cnc": [10.0]
         })
     try:
         response = supabase.table("estado_empresa").select("*").order("created_at", desc=False).execute()
@@ -57,58 +92,47 @@ def cargar_datos():
 
 df = cargar_datos()
 
+# Definir valores actuales (si estamos en modo manual usamos los del slider, si no, el último de la BD)
+if modo_simulacion == "Forzar Fallo Manual / Extremo":
+    capital_actual = capital_manual
+    desgaste_actual = desgaste_manual
+    ingreso_actual = ingreso_manual
+else:
+    if not df.empty:
+        ultimo = df.iloc[-1]
+        capital_actual = float(ultimo.get("capital", 150000.0))
+        desgaste_actual = float(ultimo.get("desgaste_cnc", 10.0))
+        ingreso_actual = float(ultimo.get("ingreso", 0.0))
+    else:
+        capital_actual, desgaste_actual, ingreso_actual = 150000.0, 10.0, 5000.0
+
 # ---------------------------------------------------------
-# ENCABEZADO Y BOTÓN DE REFRESCO MANUAL
+# TÍTULO Y MÉTRICAS PRINCIPALES (KPIs)
 # ---------------------------------------------------------
-st.title("🏭 Panel de Control y Supervisión Industrial Autónoma")
-st.markdown("Monitorización en tiempo real conectada a GitHub Actions y Supabase.")
+st.title("🏭 Centro de Inteligencia y Supervisión Industrial")
+st.markdown("Monitorización en tiempo real y simulación de escenarios de estrés operativo.")
 
-col_btn1, col_btn2 = st.columns([1, 5])
-with col_btn1:
-    if st.button("🔄 Refrescar Datos"):
-        st.cache_resource.clear()
-        st.rerun()
-
-if df.empty:
-    st.warning("No hay registros disponibles en la base de datos todavía. Ejecuta el worker o espera al ciclo autónomo.")
-    st.stop()
-
-# Obtener el registro más reciente (último estado)
-ultimo = df.iloc[-1]
-capital_actual = float(ultimo.get("capital", 150000.0))
-desgaste_actual = float(ultimo.get("desgaste_cnc", 10.0))
-ingreso_actual = float(ultimo.get("ingreso", 0.0))
-
-# Cálculo seguro y coherente del Margen del Turno (basado en ingresos netos vs costes estándar)
+# Cálculos de negocio
 coste_turno_estandar = 4000.0
 margen_turno_valor = ingreso_actual - coste_turno_estandar
 margen_porcentaje = (margen_turno_valor / coste_turno_estandar) * 100 if coste_turno_estandar > 0 else 0.0
+oee_planta = max(50.0, 98.0 - (desgaste_actual * 0.4))
 
-# OEE de planta simulado de manera realista en función del desgaste del CNC
-oee_planta = max(65.0, 98.0 - (desgaste_actual * 0.35))
-
-# Nivel de riesgo según el desgaste
+# Niveles de riesgo
 if desgaste_actual >= 75.0:
-    nivel_riesgo = "🚨 CRÍTICO"
-    color_riesgo = "error"
+    nivel_riesgo = "🚨 CRÍTICO (ALERTA)"
 elif desgaste_actual >= 50.0:
     nivel_riesgo = "⚠️ PRECAUCIÓN"
-    color_riesgo = "warning"
 else:
     nivel_riesgo = "✅ NOMINAL"
-    color_riesgo = "success"
 
-# ---------------------------------------------------------
-# MÉTRICAS PRINCIPALES (KPIs SUPERIOR)
-# ---------------------------------------------------------
-st.markdown("### 📊 Indicadores Clave de Operación (KPIs)")
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
 with kpi1:
     st.metric(label="Capital Operativo", value=f"{capital_actual:,.2f} €", delta=f"{ingreso_actual:,.2f} € último ingreso")
 
 with kpi2:
-    st.metric(label="Desgaste CNC", value=f"{desgaste_actual:.1f} %", delta="Salud Maquinaria" if desgaste_actual < 50 else "Revisión requerida", delta_color="inverse" if desgaste_actual >= 50 else "normal")
+    st.metric(label="Desgaste CNC", value=f"{desgaste_actual:.1f} %", delta="Salud Maquinaria" if desgaste_actual < 75 else "¡Peligro de rotura!", delta_color="inverse" if desgaste_actual >= 75 else "normal")
 
 with kpi3:
     st.metric(label="OEE de Planta", value=f"{oee_planta:.1f} %", delta="Eficiencia Global")
@@ -129,21 +153,15 @@ col_g1, col_g2 = st.columns(2)
 with col_g1:
     st.markdown("#### 📈 Historia de Capital Operativo (€)")
     if "capital" in df.columns:
-        chart_data_capital = df[["created_at", "capital"]].set_index("created_at")
-        st.line_chart(chart_data_capital, color="#1f77b4")
-    else:
-        st.info("No hay datos históricos de capital.")
+        st.line_chart(df[["created_at", "capital"]].set_index("created_at"), color="#1f77b4")
 
 with col_g2:
     st.markdown("#### ⚙️ Evolución del Desgaste de Maquinaria (%)")
     if "desgaste_cnc" in df.columns:
-        chart_data_desgaste = df[["created_at", "desgaste_cnc"]].set_index("created_at")
-        st.area_chart(chart_data_desgaste, color="#ff4b4b")
-    else:
-        st.info("No hay datos históricos de desgaste.")
+        st.area_chart(df[["created_at", "desgaste_cnc"]].set_index("created_at"), color="#ff4b4b")
 
 # ---------------------------------------------------------
-# TABLA DE REGISTROS DETALLADOS
+# TABLA DE REGISTROS
 # ---------------------------------------------------------
 with st.expander("🔍 Ver registros detallados en bruto (Base de Datos Supabase)"):
     st.dataframe(df, use_container_width=True)
