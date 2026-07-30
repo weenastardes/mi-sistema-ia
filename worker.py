@@ -4,6 +4,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from google import genai
+from supabase import create_client
 
 # ---------------------------------------------------------
 # LECTURA DE SECRETOS DE ENTORNO
@@ -12,6 +13,11 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "pruebaprogramacionempresa@gmail.com")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 DEST_EMAIL = os.environ.get("DEST_EMAIL", "pruebaprogramacionempresa@gmail.com")
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if (SUPABASE_URL and SUPABASE_KEY) else None
 
 def consultar_gemini(api_key, tipo_evento, contexto):
     client = genai.Client(api_key=api_key)
@@ -51,36 +57,53 @@ def enviar_email(remitente, password, destinatario, asunto, cuerpo):
     server.quit()
 
 def ejecutar_inspeccion_autonoma():
-    print("🔍 Iniciando inspección autónoma de sensores y finanzas...")
+    print("🔍 Iniciando inspección autónoma y conectando a la BD...")
     
-    probabilidad = random.random()
-    
-    # 1. Escenario de Avería (20% de probabilidad)
-    if probabilidad < 0.20:
-        print("🚨 Anomalía crítica detectada en maquinaria!")
-        maq = "Línea de Corte Láser CNC"
-        desgaste = random.uniform(80.0, 96.0)
-        temp = random.uniform(85.0, 110.0)
-        ctx = f"Equipo: {maq}\nDesgaste: {desgaste:.1f}%\nTemperatura: {temp:.1f} °C\nCosto Preventivo: 4.000 €\nCosto Parada Catastrófica: 32.000 €"
-        
-        reporte = consultar_gemini(GEMINI_API_KEY, "ALERTA PREDICTIVA: FALLO CRÍTICO EN MAQUINARIA", ctx)
-        enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚨 AUTÓNOMO 24/7: Fallo inminente en {maq}", reporte)
-        print("✉️ Correo de alerta enviado exitosamente.")
+    capital_actual = 150000.0
+    desgaste_cnc = 10.0
 
-    # 2. Escenario de Pico Financiero (15% de probabilidad)
-    elif probabilidad > 0.85:
-        print("💰 Pico de ventas detectado!")
-        ingreso = random.randint(45000, 85000)
-        ctx = f"Ingreso Extraordinario Registrado: {ingreso:,.2f} €"
-        
-        reporte = consultar_gemini(GEMINI_API_KEY, "INFORME FINANCIERO: PICO DE VENTAS", ctx)
-        enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚀 AUTÓNOMO 24/7: Pico de Ventas ({ingreso:,.2f} €)", reporte)
-        print("✉️ Correo financiero enviado exitosamente.")
+    # Leer el último estado guardado en la base de datos
+    if supabase:
+        try:
+            res = supabase.table("estado_empresa").select("*").order("created_at", desc=True).limit(1).execute()
+            if res.data:
+                capital_actual = float(res.data[0].get("capital", 150000.0))
+                desgaste_cnc = float(res.data[0].get("desgaste_cnc", 10.0))
+        except Exception as e:
+            print(f"⚠️ Aviso al leer BD: {e}")
+
+    # Simulación de ciclo
+    ingreso = random.randint(3000, 12000)
+    probabilidad = random.random()
+
+    if probabilidad < 0.20:
+        desgaste_cnc = min(100.0, desgaste_cnc + random.uniform(15.0, 25.0))
     else:
-        print("🟢 Inspección completada: Todos los sistemas operan dentro de parámetros normales.")
+        desgaste_cnc = min(100.0, desgaste_cnc + random.uniform(0.5, 2.0))
+
+    capital_actual += (ingreso - 4000.0)
+
+    # Guardar en Supabase
+    if supabase:
+        try:
+            supabase.table("estado_empresa").insert({
+                "capital": capital_actual,
+                "ingreso": ingreso,
+                "desgaste_cnc": desgaste_cnc
+            }).execute()
+            print("💾 Datos registrados exitosamente en Supabase!")
+        except Exception as e:
+            print(f"❌ Error al guardar en BD: {e}")
+
+    # Alerta por Gemini
+    if desgaste_cnc >= 75.0:
+        ctx = f"Equipo: Línea CNC\nDesgaste actual: {desgaste_cnc:.1f}%\nCapital disponible: {capital_actual:,.2f} €"
+        reporte = consultar_gemini(GEMINI_API_KEY, "ALERTA PREDICTIVA: DESGASTE ELEVADO EN MAQUINARIA", ctx)
+        enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚨 AUTÓNOMO 24/7: Fallo inminente (Desgaste {desgaste_cnc:.1f}%)", reporte)
+        print("✉️ Correo de alerta enviado.")
 
 if __name__ == "__main__":
     if GEMINI_API_KEY and SMTP_PASSWORD:
         ejecutar_inspeccion_autonoma()
     else:
-        print("⚠️ Faltan las variables de entorno (GEMINI_API_KEY o SMTP_PASSWORD).")
+        print("⚠️ Faltan variables de entorno.")
