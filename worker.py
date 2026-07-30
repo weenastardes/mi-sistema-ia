@@ -77,7 +77,7 @@ def ejecutar_inspeccion_autonoma():
         except Exception as e:
             print(f"⚠️ Aviso al leer BD: {e}")
 
-    # Simulación de ciclo
+    # Simulación de ciclo idéntica a la de la app
     ingreso = random.randint(3000, 12000)
     probabilidad = random.random()
 
@@ -88,7 +88,7 @@ def ejecutar_inspeccion_autonoma():
 
     capital_actual += (ingreso - 4000.0)
 
-    # Guardar SIEMPRE en Supabase (independientemente de Gemini o el correo)
+    # Guardar SIEMPRE en Supabase
     if supabase:
         try:
             supabase.table("estado_empresa").insert({
