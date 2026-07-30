@@ -1,4 +1,5 @@
-import streamlit as st
+import os
+import streamlit as sd # o simplemente import streamlit as st
 import pandas as pd
 from supabase import create_client
 
