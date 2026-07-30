@@ -248,7 +248,7 @@ if opcion_menu == "📊 Dashboard Control 24/7":
     with res_col1:
         st.write("**Línea Principales de Producción:** CNC Láser 5-Axis")
         st.write("**Ubicación:** Nave Industrial Sector A4")
-        st.write("**Estado de Conectividad:** Servidores GitHub Actions vinculados 24/7 cada 15 min")
+        st.write("**Estado de Conectividad:** Servidores GitHub Actions vinculados 24/7 cada 5 min")
     
     with res_col2:
         if st.session_state.desgaste_cnc >= 75.0:
