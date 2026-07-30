@@ -24,7 +24,9 @@ jobs:
 
       - name: Ejecutar Auditoría Autónoma
         env:
+          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          DEST_EMAIL: ${{ secrets.DEST_EMAIL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
