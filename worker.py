@@ -20,6 +20,8 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if (SUPABASE_URL and SUPABASE_KEY) else None
 
 def consultar_gemini(api_key, tipo_evento, contexto):
+    if not api_key:
+        return "Error: API Key de Gemini no configurada."
     client = genai.Client(api_key=api_key)
     prompt = f"""
     Eres el Director Técnico e Inteligencia Artificial Supervisora de la empresa Industrias Innovación S.L.
@@ -36,7 +38,7 @@ def consultar_gemini(api_key, tipo_evento, contexto):
     """
     try:
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt
         )
         return response.text
@@ -44,6 +46,9 @@ def consultar_gemini(api_key, tipo_evento, contexto):
         return f"Error consultando Gemini: {e}"
 
 def enviar_email(remitente, password, destinatario, asunto, cuerpo):
+    if not password:
+        print("⚠️ No se puede enviar correo: falta SMTP_PASSWORD.")
+        return
     msg = MIMEMultipart()
     msg['From'] = remitente
     msg['To'] = destinatario
@@ -83,7 +88,7 @@ def ejecutar_inspeccion_autonoma():
 
     capital_actual += (ingreso - 4000.0)
 
-    # Guardar en Supabase
+    # Guardar SIEMPRE en Supabase (independientemente de Gemini o el correo)
     if supabase:
         try:
             supabase.table("estado_empresa").insert({
@@ -94,8 +99,10 @@ def ejecutar_inspeccion_autonoma():
             print("💾 Datos registrados exitosamente en Supabase!")
         except Exception as e:
             print(f"❌ Error al guardar en BD: {e}")
+    else:
+        print("❌ Error: No hay conexión configurada con Supabase.")
 
-    # Alerta por Gemini
+    # Alerta por Gemini si el desgaste es crítico
     if desgaste_cnc >= 75.0:
         ctx = f"Equipo: Línea CNC\nDesgaste actual: {desgaste_cnc:.1f}%\nCapital disponible: {capital_actual:,.2f} €"
         reporte = consultar_gemini(GEMINI_API_KEY, "ALERTA PREDICTIVA: DESGASTE ELEVADO EN MAQUINARIA", ctx)
@@ -103,7 +110,4 @@ def ejecutar_inspeccion_autonoma():
         print("✉️ Correo de alerta enviado.")
 
 if __name__ == "__main__":
-    if GEMINI_API_KEY and SMTP_PASSWORD:
-        ejecutar_inspeccion_autonoma()
-    else:
-        print("⚠️ Faltan variables de entorno.")
+    ejecutar_inspeccion_autonoma()
