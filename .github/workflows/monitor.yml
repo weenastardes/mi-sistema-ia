@@ -8,27 +8,25 @@ on:
 jobs:
   ejecutar-worker:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Descargar Código
-      uses: actions/checkout@v3
+      - name: Descargar Código
+        uses: actions/checkout@v3
 
-    - name: Configurar Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Instalar Dependencias
-      run: |
-        python -m pip install --upgrade pip
-        pip install google-genai supabase
+      - name: Instalar Dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-genai supabase
 
-    - name: Ejecutar Auditoría Autónoma
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        SMTP_EMAIL: "pruebaprogramacionempresa@gmail.com"
-        DEST_EMAIL: "pruebaprogramacionempresa@gmail.com"
-      run: python worker.py
+      - name: Ejecutar Auditoría Autónoma
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python worker.py
