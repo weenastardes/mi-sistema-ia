@@ -1,388 +1,406 @@
 import streamlit as st
+import pandas as pd
+import numpy as np
+import random
 import smtplib
+import os
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from google import genai
-import time
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import random
+from supabase import create_client
 
 # ---------------------------------------------------------
-# CONFIGURACIÓN DE PÁGINA
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS DE LA INTERFAZ
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Plataforma de Mantenimiento Predictivo & IA Financiera",
+    page_title="ERP Industrial & Monitor Predictivo IA 24/7",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Estilos visuales personalizados
+# Estilo personalizado mediante CSS
 st.markdown("""
-    <style>
-    .metric-box {
-        background-color: #1e222d;
-        border-left: 5px solid #00E676;
+<style>
+    .metric-card {
+        background-color: #1e293b;
         padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 10px;
+        border-radius: 10px;
+        border: 1px solid #334155;
     }
-    .alert-box {
-        background-color: #2d1e1e;
-        border-left: 5px solid #FF5252;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 10px;
+    .status-ok {
+        color: #22c55e;
+        font-weight: bold;
     }
-    </style>
+    .status-alert {
+        color: #ef4444;
+        font-weight: bold;
+    }
+</style>
 """, unsafe_allow_html=True)
 
-st.title("🏭 ERP Predictivo & Agente Autónomo de Operaciones")
-st.caption("Sistema de monitoreo continuo, detección de anomalías en maquinaria y auditoría financiera inteligente para PYMES e Industrias.")
+# ---------------------------------------------------------
+# 2. LECTURA DE SECRETOS Y ENTORNO
+# ---------------------------------------------------------
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "pruebaprogramacionempresa@gmail.com")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or st.secrets.get("SMTP_PASSWORD")
+DEST_EMAIL = os.environ.get("DEST_EMAIL", "pruebaprogramacionempresa@gmail.com")
 
 # ---------------------------------------------------------
-# INICIALIZACIÓN DE ESTADOS PERSISTENTES (PUNTO CERO / ESTADO LIMPIO)
+# 3. CONEXIÓN A BASE DE DATOS (SUPABASE)
 # ---------------------------------------------------------
-if "empresa_nombre" not in st.session_state:
-    st.session_state.empresa_nombre = "Industrias Innovación S.L."
+supabase = None
+if SUPABASE_URL and SUPABASE_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception as e:
+        st.sidebar.error(f"Error conectando a Supabase: {e}")
 
-if "capital" not in st.session_state:
-    st.session_state.capital = 150000.0
+def cargar_datos_bd():
+    """Consulta la tabla estado_empresa en Supabase y devuelve un DataFrame ordenado."""
+    if supabase:
+        try:
+            res = supabase.table("estado_empresa").select("*").order("created_at", desc=False).execute()
+            if res.data:
+                df = pd.DataFrame(res.data)
+                if 'created_at' in df.columns:
+                    df['created_at'] = pd.to_datetime(df['created_at'])
+                return df
+        except Exception as e:
+            st.sidebar.warning(f"Error al cargar datos desde la BD: {e}")
+    return pd.DataFrame()
 
-if "costos_fijos" not in st.session_state:
-    st.session_state.costos_fijos = {
-        "Nóminas Plantilla": 18500.0,
-        "Alquiler Nave Industrial": 3500.0,
-        "Electricidad y Agua": 2800.0,
-        "Licencias y Seguros": 1200.0
-    }
-
-# Maquinaria iniciada en nivel de desgaste plano/bajo (10%)
-if "maquinaria" not in st.session_state:
-    st.session_state.maquinaria = {
-        "Prensa Hidráulica H-500": {"desgaste": 10.0, "temp_c": 50.0, "vibracion_hz": 10.0, "horas": 0, "costo_reparacion": 2500.0, "costo_fallo_catastrofico": 18000.0},
-        "Línea de Corte Láser CNC": {"desgaste": 10.0, "temp_c": 50.0, "vibracion_hz": 10.0, "horas": 0, "costo_reparacion": 4000.0, "costo_fallo_catastrofico": 32000.0},
-        "Compresor Industrial B-2": {"desgaste": 10.0, "temp_c": 50.0, "vibracion_hz": 10.0, "horas": 0, "costo_reparacion": 1200.0, "costo_fallo_catastrofico": 9000.0}
-    }
-
-# Historial financiero que arranca sólo con la foto inicial (sin variaciones previas)
-if "historial_finanzas" not in st.session_state:
-    st.session_state.historial_finanzas = pd.DataFrame({
-        "Tiempo": [pd.Timestamp.now()],
-        "Capital": [150000.0],
-        "Ingresos": [0.0],
-        "Costos_Variables": [0.0]
-    })
-
-if "historial_alertas" not in st.session_state:
-    st.session_state.historial_alertas = []
-
-if "motor_activo" not in st.session_state:
-    st.session_state.motor_activo = False
-
-if "ultima_ejecucion" not in st.session_state:
-    st.session_state.ultima_ejecucion = 0
+def guardar_estado_bd(capital, ingreso, desgaste):
+    """Inserta una nueva lectura realizada manualmente desde la web."""
+    if supabase:
+        try:
+            supabase.table("estado_empresa").insert({
+                "capital": capital,
+                "ingreso": ingreso,
+                "desgaste_cnc": desgaste
+            }).execute()
+            return True
+        except Exception as e:
+            st.error(f"Error al guardar datos en Supabase: {e}")
+    return False
 
 # ---------------------------------------------------------
-# BARRA LATERAL: CONFIGURACIÓN
+# 4. FUNCIONES DE IA (GEMINI) Y NOTIFICACIONES (SMTP)
 # ---------------------------------------------------------
-st.sidebar.title("⚙️ Configuración del Servidor")
-
-st.sidebar.subheader("🔑 Credenciales de Notificación")
-gemini_key = st.sidebar.text_input("Gemini API Key:", type="password", help="Consíguela en aistudio.google.com")
-smtp_email = st.sidebar.text_input("Correo Remitente (SMTP):", value="pruebaprogramacionempresa@gmail.com")
-smtp_password = st.sidebar.text_input("Contraseña de Aplicación:", type="password")
-dest_email = st.sidebar.text_input("Correo Destinatario:", value="pruebaprogramacionempresa@gmail.com")
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🎚️ Umbrales de Seguridad")
-sensibilidad_desgaste = st.sidebar.slider("Alerta por Desgaste Crítico (%):", 50, 95, 75)
-sensibilidad_temp = st.sidebar.slider("Alerta Temperatura Crítica (°C):", 70, 120, 90)
-frecuencia_monitoreo = st.sidebar.number_input("Frecuencia de ciclo (segundos):", min_value=10, value=30, step=5)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Estado del Agente:")
-if st.session_state.motor_activo:
-    st.sidebar.markdown("🟢 **MONITOREO EN TIEMPO REAL ACTIVO**")
-else:
-    st.sidebar.markdown("🔴 **SISTEMA EN PAUSA**")
-
-col_a1, col_a2 = st.sidebar.columns(2)
-with col_a1:
-    if st.button("▶️ Iniciar"):
-        st.session_state.motor_activo = True
-        st.rerun()
-with col_a2:
-    if st.button("⏹️ Detener"):
-        st.session_state.motor_activo = False
-        st.rerun()
-
-# ---------------------------------------------------------
-# FUNCIONES NÚCLEO (IA & COMUNICACIÓN)
-# ---------------------------------------------------------
-def consultar_gemini_agente(api_key, tipo_evento, contexto):
-    """Consulta al modelo Gemini 2.0 Flash para auditorías técnicas y financieras."""
-    client = genai.Client(api_key=api_key)
+def consultar_gemini(api_key, tipo_evento, contexto):
+    """Consulta al modelo de Inteligencia Artificial para generar informes predictivos."""
+    if not api_key:
+        return "⚠️ Error: Clave de API de Gemini no detectada. Configúrala en los secretos."
     
+    client = genai.Client(api_key=api_key)
     prompt = f"""
-    Eres el Director Técnico e Inteligencia Artificial Supervisora de la empresa: {st.session_state.empresa_nombre}.
+    Eres el Director Técnico e Inteligencia Artificial Supervisora de la planta Industrias Innovación S.L.
     
     TIPO DE INCIDENCIA DETECTADA: {tipo_evento}
-    
-    DATOS OPERATIVOS Y TELEMETRÍA EN TIEMPO REAL:
+    DATOS OPERATIVOS EN TIEMPO REAL:
     {contexto}
 
-    REQUERIMIENTOS DEL INFORME:
-    1. **Diagnóstico Predictivo:** Analiza el riesgo y estima la Vida Útil Restante (RUL) o el impacto en tesorería.
-    2. **Análisis de Impacto Económico:** Compara el costo de prevención inmediata vs. la pérdida total por paro de planta o falta de liquidez.
-    3. **Plan de Acción Inmediato:** Proporciona 3 pasos ejecutivos claros dirigidos a la dirección de la empresa.
-    4. **Tono:** Profesional, directo, tipo Toque de Atención Gerencial.
+    REQUERIMIENTOS ESTRUCTURADOS DEL INFORME:
+    1. DIAGNÓSTICO PREDICTIVO: Evaluación de vida útil restante del equipo (RUL).
+    2. ANÁLISIS DE IMPACTO ECONÓMICO: Riesgo potencial en ingresos y costes de parada.
+    3. PLAN DE ACCIÓN EJECUTIVO: 3 medidas correctivas inmediatas a tomar por el equipo técnico.
+    4. CONCLUSIÓN FINAL Y RECOMENDACIÓN OPERATIVA.
+    
+    Asegúrate de mantener un tono directivo, técnico, profesional y de urgencia.
     """
-    
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt
-    )
-    return response.text
+    try:
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        return f"Error consultando el motor Gemini: {e}"
 
-def enviar_email_alerta(remitente, password, destinatario, asunto, cuerpo):
-    msg = MIMEMultipart()
-    msg['From'] = remitente
-    msg['To'] = destinatario
-    msg['Subject'] = asunto
-    msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
+def enviar_email(remitente, password, destinatario, asunto, cuerpo):
+    """Envía correos electrónicos automáticos vía SMTP."""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = remitente
+        msg['To'] = destinatario
+        msg['Subject'] = asunto
+        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
 
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.starttls()
-    server.login(remitente, password)
-    server.sendmail(remitente, destinatario, msg.as_string())
-    server.quit()
-
-def ejecutar_simulacion_ciclo(forzar=None):
-    """Avanza la telemetría y contabilidad de la empresa un paso en el tiempo."""
-    # 1. Finanzas del ciclo
-    ingresos_ciclo = random.randint(5000, 18000) if forzar != "pico_ventas" else random.randint(50000, 95000)
-    gastos_variables = random.randint(2000, 7000)
-    gastos_fijos_ciclo = sum(st.session_state.costos_fijos.values()) / 30  # Prorrateo diario/ciclo
-    
-    balance_neto = ingresos_ciclo - (gastos_variables + gastos_fijos_ciclo)
-    st.session_state.capital += balance_neto
-    
-    # Registramos en el histórico financiero
-    nueva_fila_fin = {
-        "Tiempo": pd.Timestamp.now(),
-        "Capital": st.session_state.capital,
-        "Ingresos": ingresos_ciclo,
-        "Costos_Variables": gastos_variables
-    }
-    st.session_state.historial_finanzas = pd.concat(
-        [st.session_state.historial_finanzas, pd.DataFrame([nueva_fila_fin])], 
-        ignore_index=True
-    ).tail(25)
-
-    # 2. Telemetría y Salud de Maquinaria
-    maquina_riesgo = ""
-    max_desgaste = 0.0
-    temp_max = 0.0
-    
-    for nombre, datos in st.session_state.maquinaria.items():
-        inc_desgaste = random.uniform(0.5, 2.5)
-        inc_temp = random.uniform(-2.0, 3.0)
-        
-        if forzar == "averia_maquina" and nombre == "Línea de Corte Láser CNC":
-            inc_desgaste = 32.0
-            inc_temp = 25.0
-            
-        datos["desgaste"] = min(100.0, datos["desgaste"] + inc_desgaste)
-        datos["temp_c"] = max(40.0, min(130.0, datos["temp_c"] + inc_temp))
-        datos["vibracion_hz"] = round(random.uniform(10.0, 35.0), 1)
-        datos["horas"] += random.randint(1, 5)
-
-        if datos["desgaste"] > max_desgaste:
-            max_desgaste = datos["desgaste"]
-            maquina_riesgo = nombre
-            temp_max = datos["temp_c"]
-
-    # Evaluaciones de disparadores de alerta
-    es_critico_desgaste = max_desgaste >= sensibilidad_desgaste
-    es_critico_temp = temp_max >= sensibilidad_temp
-    es_pico_ventas = ingresos_ciclo >= 45000
-
-    return ingresos_ciclo, balance_neto, maquina_riesgo, max_desgaste, temp_max, (es_critico_desgaste or es_critico_temp), es_pico_ventas
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(remitente, password)
+        server.sendmail(remitente, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"Error al enviar la alerta por correo: {e}")
+        return False
 
 # ---------------------------------------------------------
-# INTERFAZ Y PESTAÑAS PRINCIPALES
+# 5. CARGA INICIAL Y ESTADO DE SESIÓN
 # ---------------------------------------------------------
-tab_dash, tab_sim, tab_config, tab_log = st.tabs([
-    "📊 Panel de Control (ERP)", 
-    "🧪 Laboratorio de Contingencias", 
-    "⚙️ Parámetros de Empresa",
-    "📜 Registro de Auditorías"
-])
+df_historico = cargar_datos_bd()
 
-# --- PESTAÑA 1: DASHBOARD ERP ---
-with tab_dash:
-    st.subheader(f"Visión General Operativa: {st.session_state.empresa_nombre}")
+if not df_historico.empty:
+    st.session_state.capital = float(df_historico.iloc[-1]['capital'])
+    st.session_state.desgaste_cnc = float(df_historico.iloc[-1]['desgaste_cnc'])
+    st.session_state.ultimo_ingreso = float(df_historico.iloc[-1].get('ingreso', 8000.0))
+else:
+    if 'capital' not in st.session_state:
+        st.session_state.capital = 150000.0
+    if 'desgaste_cnc' not in st.session_state:
+        st.session_state.desgaste_cnc = 10.0
+    if 'ultimo_ingreso' not in st.session_state:
+        st.session_state.ultimo_ingreso = 8000.0
+
+# ---------------------------------------------------------
+# 6. BARRA LATERAL DE NAVEGACIÓN Y CONFIGURACIÓN
+# ---------------------------------------------------------
+st.sidebar.image("https://img.icons8.com/color/96/factory.png", width=70)
+st.sidebar.title("Navegación ERP")
+st.sidebar.markdown("---")
+
+opcion_menu = st.sidebar.radio(
+    "Selecciona un Módulo:",
+    ["📊 Dashboard Control 24/7", "🧪 Centro de Simulación", "📜 Registros Base de Datos", "🤖 Módulo IA Supervisor", "⚙️ Configuración & API"]
+)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Estado de Infraestructura")
+if supabase:
+    st.sidebar.success("Base de Datos: Conectada")
+else:
+    st.sidebar.warning("Base de Datos: Modo Local")
+
+if GEMINI_API_KEY:
+    st.sidebar.success("Gemini AI: Activo")
+else:
+    st.sidebar.error("Gemini AI: Inactivo")
+
+if SMTP_PASSWORD:
+    st.sidebar.success("Servidor SMTP: Activo")
+else:
+    st.sidebar.error("Servidor SMTP: Inactivo")
+
+# ---------------------------------------------------------
+# 7. CABECERA PRINCIPAL
+# ---------------------------------------------------------
+st.title("🏭 ERP Industrial & Monitor Predictivo IA 24/7")
+st.caption("Sistema Avanzado de Gestión de Planta, Métricas Financieras y Supervisión Predictiva en la Nube")
+st.markdown("---")
+
+# ---------------------------------------------------------
+# MÓDULO 1: DASHBOARD PRINCIPAL
+# ---------------------------------------------------------
+if opcion_menu == "📊 Dashboard Control 24/7":
     
-    k1, k2, k3, k4 = st.columns(4)
-    ult_ingreso = st.session_state.historial_finanzas["Ingresos"].iloc[-1]
+    # Fila de Métricas Clave (KPIs)
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     
-    delta_capital = 0.0
-    if len(st.session_state.historial_finanzas) > 1:
-        delta_capital = st.session_state.historial_finanzas['Capital'].iloc[-1] - st.session_state.historial_finanzas['Capital'].iloc[-2]
+    kpi1.metric("Capital Operativo", f"{st.session_state.capital:,.2f} €", delta=f"{st.session_state.ultimo_ingreso - 4000:.2f} €")
+    kpi2.metric("Desgaste CNC", f"{st.session_state.desgaste_cnc:.1f} %", delta="Salud Maquinaria", delta_color="inverse")
     
-    k1.metric("Capital Disponible", f"{st.session_state.capital:,.2f} €", f"{delta_capital:,.2f} €")
-    k2.metric("Último Ingreso", f"{ult_ingreso:,.2f} €")
-    k3.metric("Gastos Fijos Mensuales", f"{sum(st.session_state.costos_fijos.values()):,.2f} €")
+    # Cálculo de métricas ERP derivadas
+    oee_estimado = max(0.0, 100.0 - (st.session_state.desgaste_cnc * 0.6))
+    kpi3.metric("OEE de Planta", f"{oee_estimado:.1f} %")
     
-    # Evaluación global de salud
-    peor_maq = max(st.session_state.maquinaria.items(), key=lambda x: x[1]["desgaste"])
-    if peor_maq[1]["desgaste"] >= sensibilidad_desgaste:
-        k4.error(f"🚨 Riesgo: {peor_maq[0]} ({peor_maq[1]['desgaste']:.1f}%)")
+    margin = ((st.session_state.ultimo_ingreso - 4000) / max(st.session_state.ultimo_ingreso, 1)) * 100
+    kpi4.metric("Margen del Turno", f"{margin:.1f} %")
+    
+    if st.session_state.desgaste_cnc >= 75.0:
+        kpi5.metric("Nivel de Riesgo", "🚨 CRÍTICO", delta="Mantenimiento Requerido", delta_color="inverse")
     else:
-        k4.success(f"🟢 Maquinaria Estable ({peor_maq[1]['desgaste']:.1f}%)")
+        kpi5.metric("Nivel de Riesgo", "✅ NOMINAL", delta="Sin anomalías")
+
+    st.markdown("---")
+
+    # Gráficas Principales
+    col_g1, col_g2 = st.columns(2)
+    
+    with col_g1:
+        st.subheader("📉 Historia de Capital Operativo (€)")
+        if not df_historico.empty and "capital" in df_historico.columns:
+            st.line_chart(df_historico.set_index("created_at")["capital"] if "created_at" in df_historico.columns else df_historico["capital"])
+        else:
+            st.info("Aún no hay suficientes registros en la base de datos para mostrar la tendencia.")
+
+    with col_g2:
+        st.subheader("⚙️ Evolución del Desgaste de Maquinaria (%)")
+        desgaste_pct = int(min(st.session_state.desgaste_cnc, 100))
+        st.progress(desgaste_pct)
+        
+        if not df_historico.empty and "desgaste_cnc" in df_historico.columns:
+            st.area_chart(df_historico["desgaste_cnc"])
+        else:
+            st.info("Genera turnos o espera a las lecturas autónomas de GitHub para ver la gráfica de desgaste.")
 
     st.markdown("---")
     
-    g_col1, g_col2 = st.columns(2)
-    with g_col1:
-        fig_cap = px.area(
-            st.session_state.historial_finanzas, 
-            x="Tiempo", 
-            y="Capital", 
-            title="📈 Evolución de Tesorería y Liquidez (€)",
-            template="plotly_dark"
-        )
-        fig_cap.update_traces(line_color="#00E676")
-        st.plotly_chart(fig_cap, use_container_width=True)
-
-    with g_col2:
-        df_maq = pd.DataFrame([
-            {"Equipo": k, "Desgaste_%": v["desgaste"], "Temp_°C": v["temp_c"]} 
-            for k, v in st.session_state.maquinaria.items()
-        ])
-        fig_maq = px.bar(
-            df_maq, 
-            x="Equipo", 
-            y="Desgaste_%", 
-            color="Temp_°C",
-            title="🛠️ Desgaste y Temperatura de Equipos Críticos",
-            color_continuous_scale="OrRd",
-            range_y=[0, 100],
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_maq, use_container_width=True)
-
-# --- PESTAÑA 2: LABORATORIO DE CONTINGENCIAS ---
-with tab_sim:
-    st.subheader("Simulación de Escenarios y Pruebas del Agente Predictivo")
-    st.write("Usa estos mandos para forzar anomalías operativas y comprobar cómo la IA evalúa la telemetría antes de enviar el correo de alerta.")
-
-    c_b1, c_b2, c_b3 = st.columns(3)
+    # Sección de Diagnóstico Rápido
+    st.subheader("📋 Resumen Ejecutivo de la Planta")
+    res_col1, res_col2 = st.columns(2)
     
-    with c_b1:
-        if st.button("⚠️ Provocar Fallo Severo en CNC"):
-            if not gemini_key or not smtp_email or not smtp_password or not dest_email:
-                st.error("Completa las credenciales en la barra lateral.")
-            else:
-                ing, bal, maq, desg, temp, es_crit, es_pico = ejecutar_simulacion_ciclo(forzar="averia_maquina")
-                with st.spinner("Gemini AI procesando diagnósticos de RUL y costos de reparación..."):
-                    try:
-                        info_maq = st.session_state.maquinaria[maq]
-                        ctx = f"Equipo: {maq}\nDesgaste: {desg:.1f}%\nTemperatura: {temp:.1f} °C\nCosto Mantenimiento Preventivo: {info_maq['costo_reparacion']} €\nCosto Parada Catastrófica: {info_maq['costo_fallo_catastrofico']} €\nCapital Actual: {st.session_state.capital:,.2f} €"
-                        
-                        reporte = consultar_gemini_agente(gemini_key, "ALERTA PREDICTIVA: FALLO INMINENTE DE MAQUINARIA", ctx)
-                        enviar_email_alerta(smtp_email, smtp_password, dest_email, f"🚨 URGENTE: Riesgo de Avería en {maq}", reporte)
-                        
-                        t_str = time.strftime('%H:%M:%S')
-                        st.session_state.historial_alertas.append(f"[{t_str}] 🚨 Notificación enviada: Fallo inminente en {maq} ({desg:.1f}% Desgaste).")
-                        st.success("¡Alerta generada y correo enviado con éxito!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error en la llamada a Gemini: {e}")
+    with res_col1:
+        st.write("**Línea Principales de Producción:** CNC Láser 5-Axis")
+        st.write("**Ubicación:** Nave Industrial Sector A4")
+        st.write("**Estado de Conectividad:** Servidores GitHub Actions vinculados 24/7 cada 15 min")
+    
+    with res_col2:
+        if st.session_state.desgaste_cnc >= 75.0:
+            st.error("🚨 La maquinaria ha alcanzado el umbral de parada preventiva. Se recomienda solicitar auditoría con la IA en la pestaña 'Módulo IA Supervisor'.")
+        else:
+            st.success("✅ Todos los sistemas funcionan dentro de los parámetros de tolerancia.")
 
-    with c_b2:
-        if st.button("💰 Simular Pico Excepcional de Ventas"):
-            if not gemini_key or not smtp_email or not smtp_password or not dest_email:
-                st.error("Completa las credenciales en la barra lateral.")
-            else:
-                ing, bal, maq, desg, temp, es_crit, es_pico = ejecutar_simulacion_ciclo(forzar="pico_ventas")
-                with st.spinner("Analizando desviación positiva en flujo de caja..."):
-                    try:
-                        ctx = f"Ingreso Registrado: {ing:,.2f} €\nCapital Actual: {st.session_state.capital:,.2f} €"
-                        reporte = consultar_gemini_agente(gemini_key, "INFORME FINANCIERO: PICO EXCEPCIONAL DE VENTAS", ctx)
-                        enviar_email_alerta(smtp_email, smtp_password, dest_email, f"🚀 REGISTRO: Pico Extrahordinario de Ventas ({ing:,.2f} €)", reporte)
-                        
-                        t_str = time.strftime('%H:%M:%S')
-                        st.session_state.historial_alertas.append(f"[{t_str}] 💰 Notificación enviada: Pico de ventas ({ing:,.2f} €).")
-                        st.success("¡Informe de ganancias notificado por correo!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error en la llamada a Gemini: {e}")
+# ---------------------------------------------------------
+# MÓDULO 2: CENTRO DE SIMULACIÓN Y MANTENIMIENTO
+# ---------------------------------------------------------
+elif opcion_menu == "🧪 Centro de Simulación":
+    st.subheader("⚡ Simulador Manual de Eventos y Mantenimiento")
+    st.write("Usa esta pestaña para forzar pruebas financieras, simular desgaste acelerado o ejecutar mantenimientos que restauren el estado de la planta.")
 
-    with c_b3:
-        if st.button("🔧 Ejecutar Mantenimiento General"):
-            for m in st.session_state.maquinaria.values():
-                m["desgaste"] = 10.0
-                m["temp_c"] = 50.0
-            st.success("Se ha realizado el mantenimiento. Toda la maquinaria vuelve a niveles óptimos.")
+    sim_col1, sim_col2 = st.columns(2)
+
+    with sim_col1:
+        st.markdown("### 🎲 Simular Turno de Trabajo")
+        ingreso_sim = st.number_input("Ingresos netos por entregas (€)", value=8000, step=1000)
+        desgaste_sim = st.slider("Incremento de desgaste en este turno (%)", 0.0, 30.0, 3.5)
+        
+        if st.button("🚀 Ejecutar Turno de Producción"):
+            st.session_state.capital += (ingreso_sim - 4000.0)
+            st.session_state.desgaste_cnc = min(100.0, st.session_state.desgaste_cnc + desgaste_sim)
+            st.session_state.ultimo_ingreso = ingreso_sim
+            
+            guardar_estado_bd(st.session_state.capital, ingreso_sim, st.session_state.desgaste_cnc)
+            st.success(f"Turno procesado. Capital actualizado: {st.session_state.capital:,.2f} €")
+            
+            if st.session_state.desgaste_cnc >= 75.0:
+                st.error("🚨 Se ha superado el umbral del 75% de desgaste.")
+                if SMTP_PASSWORD:
+                    ctx = f"Desgaste actual: {st.session_state.desgaste_cnc:.1f}%\nCapital: {st.session_state.capital:,.2f} €"
+                    reporte = consultar_gemini(GEMINI_API_KEY, "ALERTA WEB MANUALLY TRIGGERED", ctx)
+                    enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚨 ALERTA WEB: Desgaste al {st.session_state.desgaste_cnc:.1f}%", reporte)
+                    st.info("Correo de notificación enviado con éxito.")
             st.rerun()
 
-# --- PESTAÑA 3: PARÁMETROS DE EMPRESA ---
-with tab_config:
-    st.subheader("Personalización del Perfil de la Empresa")
-    st.write("Aquí las PYMES podrán configurar su estructura de costes reales.")
-    
-    st.session_state.empresa_nombre = st.text_input("Nombre Comercial de la Empresa:", value=st.session_state.empresa_nombre)
-    st.session_state.capital = st.number_input("Capital/Tesorería Inicial (€):", value=float(st.session_state.capital), step=1000.0)
-    
-    st.markdown("#### Estructura de Costos Fijos Mensuales")
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        st.session_state.costos_fijos["Nóminas Plantilla"] = st.number_input("Nóminas (€):", value=float(st.session_state.costos_fijos["Nóminas Plantilla"]))
-        st.session_state.costos_fijos["Alquiler Nave Industrial"] = st.number_input("Alquiler Nave (€):", value=float(st.session_state.costos_fijos["Alquiler Nave Industrial"]))
-    with col_c2:
-        st.session_state.costos_fijos["Electricidad y Agua"] = st.number_input("Suministros (€):", value=float(st.session_state.costos_fijos["Electricidad y Agua"]))
-        st.session_state.costos_fijos["Licencias y Seguros"] = st.number_input("Seguros y Licencias (€):", value=float(st.session_state.costos_fijos["Licencias y Seguros"]))
-
-# --- PESTAÑA 4: HISTORIAL DE REGISTROS ---
-with tab_log:
-    st.subheader("Auditoría de Alertas Enviadas")
-    if st.session_state.historial_alertas:
-        for reg in reversed(st.session_state.historial_alertas):
-            st.info(reg)
-    else:
-        st.info("Sin registros acumulados. El sistema permanecerá en silencio hasta que la IA detecte una anomalía crítica.")
-
-# ---------------------------------------------------------
-# BUCLE AUTÓNOMO 24/7 EN SEGUNDO PLANO
-# ---------------------------------------------------------
-if st.session_state.motor_activo:
-    t_actual = time.time()
-    if t_actual - st.session_state.ultima_ejecucion >= frecuencia_monitoreo:
-        ing, bal, maq, desg, temp, es_crit, es_pico = ejecutar_simulacion_ciclo()
-        st.session_state.ultima_ejecucion = t_actual
+    with sim_col2:
+        st.markdown("### 🛠️ Mantenimiento Técnico de Planta")
+        st.write("Si el desgaste es elevado, puedes invertir capital operativo para realizar una revisión técnica y poner la maquinaria a punto.")
         
-        # Evaluar disparo de alerta autónoma
-        if (es_crit or es_pico) and gemini_key and smtp_email and smtp_password and dest_email:
-            try:
-                tipo_e = "RIESGO CRÍTICO DE AVERÍA EN MAQUINARIA" if es_crit else "PICO ANÓMALO DE VENTAS"
-                info_m = st.session_state.maquinaria[maq]
-                ctx = f"Equipo Afectado: {maq}\nDesgaste: {desg:.1f}%\nTemperatura: {temp:.1f} °C\nCapital: {st.session_state.capital:,.2f} €"
-                
-                reporte = consultar_gemini_agente(gemini_key, tipo_e, ctx)
-                enviar_email_alerta(smtp_email, smtp_password, dest_email, f"🤖 AUTÓNOMO: {tipo_e}", reporte)
-                
-                t_s = time.strftime('%H:%M:%S')
-                st.session_state.historial_alertas.append(f"[{t_s}] 🤖 Alerta Autónoma enviada debido a: {tipo_e}")
-            except Exception as e:
-                t_s = time.strftime('%H:%M:%S')
-                st.session_state.historial_alertas.append(f"[{t_s}] ⚠️ Error en ciclo autónomo: {e}")
+        coste_mantenimiento = 12000.0
+        st.write(f"**Coste de Mantenimiento Preventivo:** {coste_mantenimiento:,.2f} €")
+        
+        if st.button("🔧 Ejecutar Mantenimiento Completo"):
+            if st.session_state.capital >= coste_mantenimiento:
+                st.session_state.capital -= coste_mantenimiento
+                st.session_state.desgaste_cnc = 5.0
+                guardar_estado_bd(st.session_state.capital, 0, st.session_state.desgaste_cnc)
+                st.balloons()
+                st.success("Mantenimiento realizado con éxito. Maquinaria calibrada al 5.0% de desgaste.")
+                st.rerun()
+            else:
+                st.error("Capital insuficiente para costear el mantenimiento.")
 
+# ---------------------------------------------------------
+# MÓDULO 3: REGISTROS Y BASE DE DATOS DETALLADA
+# ---------------------------------------------------------
+elif opcion_menu == "📜 Registros Base de Datos":
+    st.subheader("📜 Consulta e Histórico Completo de Supabase")
+    st.write("Aquí se listan todas las entradas guardadas tanto por el servicio de automatización de GitHub Actions como por los turnos simularos manualmente.")
+
+    if st.button("🔄 Refrescar Datos desde Supabase"):
         st.rerun()
 
-    time.sleep(2)
-    st.rerun()
+    df_bd = cargar_datos_bd()
+    
+    if not df_bd.empty:
+        # Filtros para la tabla
+        f_col1, f_col2 = st.columns(2)
+        with f_col1:
+            registros_mostrar = st.slider("Número de registros a mostrar:", 5, 100, 20)
+        
+        st.dataframe(df_bd.tail(registros_mostrar), use_container_width=True)
+        
+        # Opción de Descarga
+        csv = df_bd.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="📥 Descargar Histórico como CSV",
+            data=csv,
+            file_name=f"historico_erp_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("No hay datos en la base de datos actualmente. Asegúrate de ejecutar el workflow en GitHub o generar turnos en el simulador.")
+
+# ---------------------------------------------------------
+# MÓDULO 4: IA SUPERVISOR (GEMINI CHAT & INFORME)
+# ---------------------------------------------------------
+elif opcion_menu == "🤖 Módulo IA Supervisor":
+    st.subheader("🤖 Consultoría Técnica Predictiva con Gemini AI")
+    st.write("Genera dictámenes personalizados sobre la condición de la planta usando Inteligencia Artificial.")
+
+    col_ia1, col_ia2 = st.columns([1, 2])
+
+    with col_ia1:
+        st.markdown("### Parámetros de Inspección")
+        tipo_auditoria = st.selectbox(
+            "Selecciona el tipo de auditoría:",
+            ["Auditoría General Preventiva", "Evaluación de Riesgo de Parada", "Optimización de Costes y Financiera"]
+        )
+        
+        btn_generar = st.button("🔍 Solicitar Dictamen a Gemini")
+
+    with col_ia2:
+        if btn_generar:
+            with st.spinner("Analizando parámetros de planta y redactando informe..."):
+                ctx = f"""
+                - Capital Operativo Disponible: {st.session_state.capital:,.2f} €
+                - Desgaste Acumulado Maquinaria CNC: {st.session_state.desgaste_cnc:.1f} %
+                - Ingreso del último ciclo: {st.session_state.ultimo_ingreso:,.2f} €
+                - Estado Conexión Nube: Activa (Supabase)
+                """
+                informe_generado = consultar_gemini(GEMINI_API_KEY, tipo_auditoria, ctx)
+                st.markdown("### 📋 Informe Predictivo Emitido:")
+                st.info(informe_generado)
+
+# ---------------------------------------------------------
+# MÓDULO 5: CONFIGURACIÓN Y ESTADO DE CREDENCIALES
+# ---------------------------------------------------------
+elif opcion_menu == "⚙️ Configuración & API":
+    st.subheader("⚙️ Estado de la Configuración y Variables de Entorno")
+    st.write("Verifica el estado de conexión de tus variables de entorno clave.")
+
+    st.markdown("---")
+    st.markdown("### 🔑 Lista de Variables Detectadas")
+    
+    cfg1, cfg2 = st.columns(2)
+    
+    with cfg1:
+        st.write("**SUPABASE_URL:**", "`" + (SUPABASE_URL[:20] + "..." if SUPABASE_URL else "No configurado") + "`")
+        st.write("**SUPABASE_KEY:**", "`" + (SUPABASE_KEY[:10] + "..." if SUPABASE_KEY else "No configurado") + "`")
+        st.write("**GEMINI_API_KEY:**", "`" + (GEMINI_API_KEY[:10] + "..." if GEMINI_API_KEY else "No configurado") + "`")
+
+    with cfg2:
+        st.write("**SMTP_EMAIL (Remitente):**", f"`{SMTP_EMAIL}`")
+        st.write("**SMTP_PASSWORD:**", "`" + ("********" if SMTP_PASSWORD else "No configurado") + "`")
+        st.write("**DEST_EMAIL (Destinatario):**", f"`{DEST_EMAIL}`")
+
+    st.markdown("---")
+    st.markdown("### 🧪 Prueba Manual del Servidor SMTP")
+    if st.button("📧 Enviar Correo de Prueba"):
+        if SMTP_PASSWORD:
+            exito = enviar_email(
+                SMTP_EMAIL, 
+                SMTP_PASSWORD, 
+                DEST_EMAIL, 
+                "🧪 Prueba de Sistema ERP", 
+                "Este es un correo de verificación enviado desde la interfaz de Streamlit."
+            )
+            if exito:
+                st.success("¡Correo de prueba enviado con éxito!")
+        else:
+            st.error("No se puede enviar la prueba porque falta la contraseña SMTP_PASSWORD.")
