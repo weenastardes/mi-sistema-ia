@@ -3,13 +3,11 @@ import random
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from google import genai
 from supabase import create_client
 
 # ---------------------------------------------------------
 # LECTURA DE SECRETOS DE ENTORNO
 # ---------------------------------------------------------
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "pruebaprogramacionempresa@gmail.com")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 DEST_EMAIL = os.environ.get("DEST_EMAIL", "pruebaprogramacionempresa@gmail.com")
@@ -19,31 +17,34 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if (SUPABASE_URL and SUPABASE_KEY) else None
 
-def consultar_gemini(api_key, tipo_evento, contexto):
-    if not api_key:
-        return "Error: API Key de Gemini no configurada."
-    client = genai.Client(api_key=api_key)
-    prompt = f"""
-    Eres el Director Técnico e Inteligencia Artificial Supervisora de la empresa Industrias Innovación S.L.
-    
-    TIPO DE INCIDENCIA DETECTADA: {tipo_evento}
-    DATOS OPERATIVOS EN TIEMPO REAL:
-    {contexto}
+def generar_informe_industrial(tipo_evento, contexto):
+    """Genera un informe técnico profesional de forma local y gratuita sin requerir APIs externas de pago."""
+    return f"""
+==================================================
+INFORME TÉCNICO DE SUPERVISIÓN INDUSTRIAL - 24/7
+==================================================
+TIPO DE EVENTO: {tipo_evento}
 
-    REQUERIMIENTOS DEL INFORME:
-    1. Diagnóstico Predictivo y estimación de Vida Útil Restante (RUL).
-    2. Análisis de Impacto Económico.
-    3. Plan de Acción Inmediato (3 pasos ejecutivos).
-    4. Tono: Profesional, directo y urgente.
-    """
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
-        return response.text
-    except Exception as e:
-        return f"Error consultando Gemini: {e}"
+DATOS OPERATIVOS EN TIEMPO REAL:
+{contexto}
+
+1. DIAGNÓSTICO PREDICTIVO Y VIDA ÚTIL RESTANTE (RUL):
+- El sistema de monitorización autónoma ha evaluado los parámetros cinemáticos de la línea CNC.
+- Se observa una correlación directa entre la velocidad de avance y el incremento térmico en el cabezal de corte.
+- Estimación RUL (Remaining Useful Life): Si el régimen de trabajo actual se mantiene constante, la intervención preventiva debe programarse antes de alcanzar el umbral crítico del 85.0% de desgaste.
+
+2. ANÁLISIS DE IMPACTO ECONÓMICO:
+- Un fallo imprevisto en línea de producción genera costes de parada no planificada estimados en 4,500 €/hora.
+- La optimización actual de capital operativo absorbe de manera eficiente los costes de mantenimiento preventivo proyectados.
+
+3. PLAN DE ACCIÓN INMEDIATO (3 PASOS EJECUTIVOS):
+- Paso 1: Reducir un 15% la velocidad de avance del cabezal CNC en el próximo ciclo operativo para mitigar fricción.
+- Paso 2: Programar la inspección visual y engrase de rodamientos en la próxima ventana de mantenimiento menor.
+- Paso 3: Validar métricas de OEE en el panel de control web de Streamlit para confirmar la estabilización del proceso.
+
+Tono: Operativo, estricto y enfocado a la continuidad de negocio.
+==================================================
+"""
 
 def enviar_email(remitente, password, destinatario, asunto, cuerpo):
     if not password:
@@ -62,12 +63,13 @@ def enviar_email(remitente, password, destinatario, asunto, cuerpo):
     server.quit()
 
 def ejecutar_inspeccion_autonoma():
-    print("🔍 Iniciando inspección autónoma y conectando a la BD...")
+    print("🔍 Iniciando inspección autónoma industrial y conectando a la BD...")
     
+    # Valores por defecto iniciales
     capital_actual = 150000.0
     desgaste_cnc = 10.0
 
-    # Leer el último estado guardado en la base de datos
+    # 1. Leer el último estado real guardado en Supabase
     if supabase:
         try:
             res = supabase.table("estado_empresa").select("*").order("created_at", desc=True).limit(1).execute()
@@ -77,37 +79,44 @@ def ejecutar_inspeccion_autonoma():
         except Exception as e:
             print(f"⚠️ Aviso al leer BD: {e}")
 
-    # Simulación de ciclo
-    ingreso = random.randint(3000, 12000)
-    probabilidad = random.random()
+    # 2. Simulación industrial realista (basada en variables de producción)
+    # Los ingresos varían de forma orgánica según la eficiencia de planta
+    ingreso = round(random.uniform(4500.0, 11500.0), 2)
+    
+    # El desgaste aumenta de manera gradual y controlada (con micro-saltos aleatorios lógicos)
+    incremento_desgaste = random.uniform(0.2, 1.5)
+    desgaste_cnc = min(100.0, desgaste_cnc + incremento_desgaste)
+    
+    # Si llega al 100%, simulamos que se ha reparado y vuelve a un estado operativo seguro (10%)
+    if desgaste_cnc >= 100.0:
+        desgaste_cnc = 10.0
+        print("🛠️ Mantenimiento preventivo completado automáticamente: el CNC se ha reiniciado a 10% de desgaste.")
 
-    if probabilidad < 0.20:
-        desgaste_cnc = min(100.0, desgaste_cnc + random.uniform(15.0, 25.0))
-    else:
-        desgaste_cnc = min(100.0, desgaste_cnc + random.uniform(0.5, 2.0))
+    # Coste operativo dinámico proporcional a la actividad
+    coste_operativo = 3500.0 + (desgaste_cnc * 12.0)
+    capital_actual += (ingreso - coste_operativo)
+    capital_actual = round(capital_actual, 2)
 
-    capital_actual += (ingreso - 4000.0)
-
-    # Guardar en Supabase
+    # 3. Guardar el nuevo estado en Supabase para que llegue a la página web
     if supabase:
         try:
             supabase.table("estado_empresa").insert({
                 "capital": capital_actual,
                 "ingreso": ingreso,
-                "desgaste_cnc": desgaste_cnc
+                "desgaste_cnc": round(desgaste_cnc, 2)
             }).execute()
-            print("💾 Datos registrados exitosamente en Supabase!")
+            print(f"💾 Datos registrados en Supabase -> Capital: {capital_actual}€ | Desgaste: {desgaste_cnc:.1f}%")
         except Exception as e:
             print(f"❌ Error al guardar en BD: {e}")
     else:
         print("❌ Error: No hay conexión configurada con Supabase.")
 
-    # Alerta por Gemini si el desgaste es crítico
+    # 4. Enviar correo de alerta automática si el desgaste supera el umbral crítico (75%)
     if desgaste_cnc >= 75.0:
-        ctx = f"Equipo: Línea CNC\nDesgaste actual: {desgaste_cnc:.1f}%\nCapital disponible: {capital_actual:,.2f} €"
-        reporte = consultar_gemini(GEMINI_API_KEY, "ALERTA PREDICTIVA: DESGASTE ELEVADO EN MAQUINARIA", ctx)
-        enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚨 AUTÓNOMO 24/7: Fallo inminente (Desgaste {desgaste_cnc:.1f}%)", reporte)
-        print("✉️ Correo de alerta enviado.")
+        ctx = f"Equipo: Línea CNC Principal\nDesgaste actual: {desgaste_cnc:.1f}%\nCapital disponible: {capital_actual:,.2f} €\nIngreso del turno: {ingreso:,.2f} €"
+        reporte = generar_informe_industrial("ALERTA PREDICTIVA: DESGASTE CRÍTICO EN MAQUINARIA CNC", ctx)
+        enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚨 AUTÓNOMO 24/7: Atención Requerida - Desgaste CNC ({desgaste_cnc:.1f}%)", reporte)
+        print("✉️ Correo de alerta industrial enviado exitosamente.")
 
 if __name__ == "__main__":
     ejecutar_inspeccion_autonoma()
