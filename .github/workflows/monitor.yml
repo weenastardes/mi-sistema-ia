@@ -1,0 +1,33 @@
+name: Monitor Industrial 24/7
+
+on:
+  schedule:
+    # Se ejecuta automáticamente cada 15 minutos en la nube
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Permite ejecutarlo manualmente cuando quieras probarlo
+
+jobs:
+  ejecutar-worker:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Descargar Código
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Instalar Dependencias
+      run: |
+        python -m pip install --upgrade pip
+        pip install google-genai
+
+    - name: Ejecutar Auditoría Autónoma
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        SMTP_EMAIL: "pruebaprogramacionempresa@gmail.com"
+        DEST_EMAIL: "pruebaprogramacionempresa@gmail.com"
+      run: python worker.py
