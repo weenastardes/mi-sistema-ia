@@ -1,15 +1,16 @@
-name: Monitor Industrial 24/7
+name: Worker Industrial 24/7
 
 on:
   schedule:
+    # Se ejecuta automáticamente cada 5 minutos
     - cron: '*/5 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Permite ejecutarlo manualmente desde la web de GitHub
 
 jobs:
-  ejecutar-worker:
+  run-worker:
     runs-on: ubuntu-latest
     steps:
-      - name: Descargar Código
+      - name: Checkout repositorio
         uses: actions/checkout@v3
 
       - name: Configurar Python
@@ -17,17 +18,14 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Instalar Dependencias
+      - name: Instalar dependencias
         run: |
-          python -m pip install --upgrade pip
-          pip install supabase
+          pip install supabase pandas
 
-      - name: Ejecutar Auditoría Autónoma
+      - name: Ejecutar Worker
         env:
-          SMTP_EMAIL: ${{ secrets.SMTP_EMAIL }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          DEST_EMAIL: ${{ secrets.DEST_EMAIL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: |
           python worker.py
