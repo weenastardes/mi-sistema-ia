@@ -61,7 +61,7 @@ with st.sidebar:
     
     menu = st.radio(
         "Panel de Navegación",
-        ["📊 Dashboard y KPIs", "📈 Gráficos Avanzados", "📋 Tabla de Registros", "⚙️ Configuración"]
+        ["📊 Dashboard y KPIs", "📈 Gráficos Avanzados", "📋 Tabla de Registros", "⚙️ Límites y Configuración"]
     )
     
     st.markdown("---")
@@ -112,14 +112,13 @@ if menu == "📊 Dashboard y KPIs":
 
         st.divider()
 
-        # Resumen rápido visual
         col_r1, col_r2 = st.columns(2)
         with col_r1:
             st.subheader("💡 Estado Operativo Actual")
-            st.info(f"El sistema se encuentra operando bajo un nivel de riesgo **{nivel_riesgo}**. El último ciclo generó un ingreso de **{ingreso_actual:,.2f} €** con un desgaste acumulado en la línea CNC del **{desgaste_actual:.1f}%**.")
+            st.info(f"El sistema opera bajo un nivel de riesgo **{nivel_riesgo}**. El último ciclo generó un ingreso de **{ingreso_actual:,.2f} €** con un desgaste acumulado en la línea CNC del **{desgaste_actual:.1f}%**.")
         with col_r2:
             st.subheader("🛠️ Acciones del Worker")
-            st.success("El worker en GitHub Actions se ejecuta cada 5 minutos de forma autónoma alterando las variables estocásticas de producción y guardándolas directamente aquí.")
+            st.success("El worker en GitHub Actions altera las variables estocásticas de producción y las vuelca automáticamente a Supabase.")
 
 elif menu == "📈 Gráficos Avanzados":
     st.title("📈 Tendencias Históricas de Operación")
@@ -145,7 +144,6 @@ elif menu == "📋 Tabla de Registros":
     if df.empty:
         st.warning("No hay registros disponibles en la base de datos.")
     else:
-        # Mostramos los registros ordenados del más reciente al más antiguo para mayor comodidad
         st.dataframe(df.sort_values(by="created_at", ascending=False), use_container_width=True)
         
         csv = df.to_csv(index=False).encode('utf-8')
@@ -156,13 +154,23 @@ elif menu == "📋 Tabla de Registros":
             mime='text/csv',
         )
 
-elif menu == "⚙️ Configuración":
-    st.title("⚙️ Configuración y Estado del Sistema")
-    st.markdown("""
-    Este panel interactúa en tiempo real con la infraestructura de la empresa:
-    - **Worker Autónomo:** Ejecutándose en segundo plano en GitHub Actions.
-    - **Base de Datos:** Aloja la tabla `estado_empresa` en Supabase.
-    """)
+elif menu == "⚙️ Límites y Configuración":
+    st.title("⚙️ Gestión de Límites de Máquina y Configuración")
+    st.markdown("Ajusta los parámetros operativos y umbrales de seguridad para la línea CNC.")
+    
+    col_l1, col_l2 = st.columns(2)
+    with col_l1:
+        st.subheader("🎛️ Umbrales de Alerta")
+        limite_desgaste_critico = st.slider("Límite crítico de desgaste CNC (%)", 50.0, 95.0, 75.0)
+        velocidad_maxima = st.slider("Velocidad máxima de rotación (%)", 50, 150, 100)
+    with col_l2:
+        st.subheader("🛡️ Parámetros de Seguridad")
+        parada_emergencia = st.checkbox("Activar bloqueo preventivo ante picos", value=True)
+        modo_mantenimiento = st.checkbox("Forzar pausa de mantenimiento manual", value=False)
+        
+    st.info(f"Configuración actual guardada: Desgaste crítico al **{limite_desgaste_critico}%**, Velocidad tope al **{velocidad_maxima}%**.")
+    
+    st.markdown("---")
     st.json({
         "Supabase Conectado": bool(supabase),
         "Total Entradas en Tabla": len(df) if not df.empty else 0,
