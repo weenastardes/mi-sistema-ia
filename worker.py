@@ -1,121 +1,174 @@
 import os
 import random
+import time
+from datetime import datetime, timedelta
+from supabase import create_client, Client
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from supabase import create_client
+import logging
 
-# Lectura segura de secretos
-SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "pruebaprogramacionempresa@gmail.com")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
-DEST_EMAIL = os.environ.get("DEST_EMAIL", "pruebaprogramacionempresa@gmail.com")
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+class MonitorSistema:
+    def __init__(self):
+        # Configuración Supabase
+        self.supabase_url = os.getenv('SUPABASE_URL')
+        self.supabase_key = os.getenv('SUPABASE_KEY')
+        self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
+        
+        # Configuración email
+        self.email_user = os.getenv('EMAIL_USER')
+        self.email_pass = os.getenv('EMAIL_PASS')
+        
+        # Parámetros del sistema
+        self.capital_inicial = 154000
+        self.capital_actual = self.capital_inicial
+        self.ingreso_por_iteracion = 8000
+        
+        # Umbrales para anomalías
+        self.umbral_desgaste_alto = 30
+        self.umbral_desgaste_bajo = 5
+        self.umbral_capital_minimo = 150000
 
-print(f"🔧 Configuración cargada -> Supabase URL presente: {bool(SUPABASE_URL)} | SMTP Password presente: {bool(SMTP_PASSWORD)}")
+    def generar_registro(self):
+        """Genera un nuevo registro con lógica de negocio mejorada"""
+        # Calcular desgaste CNC con variación realista
+        desgaste_base = random.uniform(5, 30)
+        
+        # Simular situación real: si hay mucho desgaste, el ingreso es menor
+        if desgaste_base > 25:
+            ingreso = random.uniform(2000, 5000)
+        elif desgaste_base > 20:
+            ingreso = random.uniform(4000, 7000)
+        elif desgaste_base > 15:
+            ingreso = random.uniform(6000, 8500)
+        else:
+            ingreso = random.uniform(8000, 10000)
+        
+        # Actualizar capital
+        self.capital_actual = self.capital_actual + ingreso - (desgaste_base * 50)
+        
+        # Asegurar que el capital no baje demasiado
+        if self.capital_actual < 150000:
+            self.capital_actual = self.capital_actual + 10000  # Inyección de capital
+        
+        return {
+            'capital': round(self.capital_actual, 2),
+            'ingreso': round(ingreso, 2),
+            'desgaste_cnc': round(desgaste_base, 2)
+        }
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if (SUPABASE_URL and SUPABASE_KEY) else None
+    def verificar_anomalias(self, registro):
+        """Verifica si hay anomalías en el registro"""
+        anomalias = []
+        
+        # Verificar desgaste CNC
+        if registro['desgaste_cnc'] > self.umbral_desgaste_alto:
+            anomalias.append(f"ALERTA: Desgaste CNC alto ({registro['desgaste_cnc']:.1f}) - Supera el umbral de {self.umbral_desgaste_alto}")
+        elif registro['desgaste_cnc'] < self.umbral_desgaste_bajo:
+            anomalias.append(f"INFORMACIÓN: Desgaste CNC bajo ({registro['desgaste_cnc']:.1f}) - Posible mantenimiento excesivo")
+        
+        # Verificar capital
+        if registro['capital'] < self.umbral_capital_minimo:
+            anomalias.append(f"ALERTA: Capital bajo ({registro['capital']:.2f}) - Por debajo del umbral de {self.umbral_capital_minimo}")
+        
+        # Verificar ingreso
+        if registro['ingreso'] < 1000:
+            anomalias.append(f"ALERTA: Ingreso muy bajo ({registro['ingreso']:.2f}) - Posible problema de producción")
+        elif registro['ingreso'] > 12000:
+            anomalias.append(f"INFORMACIÓN: Ingreso excepcionalmente alto ({registro['ingreso']:.2f})")
+        
+        return anomalias
 
-def generar_informe_industrial(tipo_evento, contexto):
-    return f"""
-==================================================
-INFORME TÉCNICO DE SUPERVISIÓN INDUSTRIAL - 24/7
-==================================================
-TIPO DE EVENTO: {tipo_evento}
-
-DATOS OPERATIVOS:
-{contexto}
-
-1. DIAGNÓSTICO PREDICTIVO Y VIDA ÚTIL (RUL):
-- El sistema autónomo ha detectado una anomalía cinemática en la línea de producción.
-- Estimación RUL: Se requiere intervención técnica antes de llegar al bloqueo total del cabezal.
-
-2. IMPACTO ECONÓMICO:
-- Riesgo de parada imprevista con pérdidas estimadas en costes de inactividad de alta criticidad.
-
-3. PLAN DE ACCIÓN INMEDIATO:
-- Paso 1: Reducir velocidad operativa de la máquina.
-- Paso 2: Despachar equipo de mantenimiento de guardia.
-- Paso 3: Revisar telemetría en el panel de control de Streamlit.
-==================================================
-"""
-
-def enviar_email(remitente, password, destinatario, asunto, cuerpo):
-    if not password:
-        print("⚠️ No se puede enviar correo: falta SMTP_PASSWORD en los secretos de GitHub.")
-        return
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = remitente
-        msg['To'] = destinatario
-        msg['Subject'] = asunto
-        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
-
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(remitente, password)
-        server.sendmail(remitente, destinatario, msg.as_string())
-        server.quit()
-        print("✉️ Correo de alerta enviado con éxito.")
-    except Exception as e:
-        print(f"❌ Error crítico al enviar el correo: {e}")
-
-def ejecutar_inspeccion_autonoma():
-    print("🔍 Ejecutando inspección autónoma 24/7...")
-    
-    capital_actual = 150000.0
-    desgaste_cnc = 10.0
-
-    # Leer último estado de Supabase
-    if supabase:
+    def guardar_registro(self):
+        """Guarda el registro en Supabase"""
         try:
-            res = supabase.table("estado_empresa").select("*").order("created_at", desc=True).limit(1).execute()
-            if res.data and len(res.data) > 0:
-                capital_actual = float(res.data[0].get("capital", 150000.0))
-                desgaste_cnc = float(res.data[0].get("desgaste_cnc", 10.0))
-                print(f"📥 Estado anterior recuperado de BD -> Capital: {capital_actual} | Desgaste: {desgaste_cnc}")
+            registro = self.generar_registro()
+            
+            # Verificar anomalías
+            anomalias = self.verificar_anomalias(registro)
+            
+            # Insertar en Supabase
+            data, count = self.supabase.table('registros').insert(registro).execute()
+            
+            logger.info(f"Registro guardado: {registro}")
+            
+            # Si hay anomalías, enviar email
+            if anomalias and self.email_user:
+                self.enviar_alerta(registro, anomalias)
+            
+            return True, anomalias
+            
         except Exception as e:
-            print(f"⚠️ Aviso al leer la base de datos: {e}")
+            logger.error(f"Error guardando registro: {e}")
+            return False, []
 
-    # Simulación industrial orgánica
-    ingreso = round(random.uniform(4000.0, 10000.0), 2)
-    
-    # Incremento de desgaste progresivo (con probabilidad de picos altos para probar las alertas)
-    if random.random() < 0.25:
-        incremento = random.uniform(15.0, 30.0) # Simula fallo acelerado para probar correo
-    else:
-        incremento = random.uniform(0.5, 3.0)
-
-    desgaste_cnc = min(100.0, desgaste_cnc + incremento)
-    
-    if desgaste_cnc >= 100.0:
-        desgaste_cnc = 10.0
-        print("🛠️ Ciclo completado: Mantenimiento correctivo aplicado automáticamente.")
-
-    coste_operativo = 3500.0 + (desgaste_cnc * 10.0)
-    capital_actual += (ingreso - coste_operativo)
-    capital_actual = round(capital_actual, 2)
-
-    # Guardar en Supabase
-    if supabase:
+    def enviar_alerta(self, registro, anomalias):
+        """Envía alerta por email cuando hay anomalías"""
         try:
-            supabase.table("estado_empresa").insert({
-                "capital": capital_actual,
-                "ingreso": ingreso,
-                "desgaste_cnc": round(desgaste_cnc, 2)
-            }).execute()
-            print(f"💾 Datos insertados correctamente en Supabase.")
+            # Crear mensaje
+            msg = MIMEMultipart()
+            msg['From'] = self.email_user
+            msg['To'] = self.email_user  # Enviar a sí mismo
+            msg['Subject'] = f"🚨 ALERTA - Sistema de Monitoreo {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            
+            # Cuerpo del mensaje
+            body = f"""
+            <h2>🚨 Alerta del Sistema de Monitoreo</h2>
+            
+            <h3>Registro detectado:</h3>
+            <ul>
+                <li><b>Capital:</b> ${registro['capital']:,.2f}</li>
+                <li><b>Ingreso:</b> ${registro['ingreso']:,.2f}</li>
+                <li><b>Desgaste CNC:</b> {registro['desgaste_cnc']:.1f}%</li>
+            </ul>
+            
+            <h3>⚠️ Anomalías detectadas:</h3>
+            <ul>
+            """
+            
+            for anomalia in anomalias:
+                body += f"<li>{anomalia}</li>"
+            
+            body += """
+            </ul>
+            
+            <p>Fecha: {}</p>
+            <p>Revisar el panel de control para más detalles.</p>
+            """.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            
+            msg.attach(MIMEText(body, 'html'))
+            
+            # Enviar email
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(self.email_user, self.email_pass)
+            server.send_message(msg)
+            server.quit()
+            
+            logger.info("Alerta enviada por email")
+            
         except Exception as e:
-            print(f"❌ Error al insertar en Supabase: {e}")
-    else:
-        print("❌ Error: Supabase no está inicializado.")
+            logger.error(f"Error enviando alerta: {e}")
 
-    # Disparar alerta por correo si el desgaste cruza el umbral crítico del 75%
-    if desgaste_cnc >= 75.0:
-        ctx = f"Equipo: Línea CNC\nDesgaste actual: {desgaste_cnc:.1f}%\nCapital disponible: {capital_actual:,.2f} €"
-        reporte = generar_informe_industrial("ALERTA CRÍTICA: DESGASTE ELEVADO EN LÍNEA CNC", ctx)
-        enviar_email(SMTP_EMAIL, SMTP_PASSWORD, DEST_EMAIL, f"🚨 ALERTA 24/7: Maquinaria en riesgo ({desgaste_cnc:.1f}%)", reporte)
+def main():
+    """Función principal del worker"""
+    logger.info("Iniciando worker de monitoreo...")
+    
+    monitor = MonitorSistema()
+    success, anomalias = monitor.guardar_registro()
+    
+    if success:
+        logger.info("✅ Registro guardado exitosamente")
+        if anomalias:
+            logger.warning(f"⚠️ {len(anomalias)} anomalías detectadas")
+            for a in anomalias:
+                logger.warning(f"  - {a}")
+    else:
+        logger.error("❌ Error guardando el registro")
 
 if __name__ == "__main__":
-    ejecutar_inspeccion_autonoma()
+    main()
