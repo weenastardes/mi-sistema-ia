@@ -4,6 +4,7 @@ on:
   schedule:
     # Ejecutar cada 10 minutos
     - cron: '*/10 * * * *'
+  
   workflow_dispatch: # Para ejecutar manualmente
 
 jobs:
@@ -13,6 +14,12 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
+    - name: Configurar zona horaria CANARIAS
+      run: |
+        sudo timedatectl set-timezone Atlantic/Canary
+        echo "📍 Zona horaria configurada: $(date)"
+        echo "🕐 Hora actual en Canarias: $(date +'%H:%M:%S')"
+    
     - name: Configurar Python
       uses: actions/setup-python@v4
       with:
@@ -21,6 +28,7 @@ jobs:
     - name: Instalar dependencias
       run: |
         pip install -r requirements.txt
+        pip install pytz
     
     - name: Ejecutar worker
       env:
@@ -28,5 +36,10 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         EMAIL_USER: ${{ secrets.EMAIL_USER }}
         EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        TZ: Atlantic/Canary
       run: |
         python worker.py
+    
+    - name: Verificar ejecución
+      run: |
+        echo "✅ Worker ejecutado correctamente a las $(date)"
