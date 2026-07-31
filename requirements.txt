@@ -1,5 +1,3 @@
-plotly
+streamlit
 pandas
-supabase-py
-python-dotenv
-pytz
+supabase
