@@ -258,7 +258,6 @@ def cargar_datos_frescos():
         response = supabase.table("registros").select("*").order("created_at", desc=False).execute()
         if response.data:
             df = pd.DataFrame(response.data)
-            # Convertir created_at a datetime
             if 'created_at' in df.columns:
                 df['created_at'] = pd.to_datetime(df['created_at'])
             return df
@@ -286,7 +285,6 @@ def calcular_metricas(estado):
     margen_porcentaje = (margen_valor / coste_estandar) * 100 if coste_estandar > 0 else 0.0
     oee_planta = max(40.0, 98.5 - (estado['desgaste_cnc'] * 0.45))
     
-    # Nivel de riesgo
     if estado['desgaste_cnc'] >= 75.0:
         riesgo = ("🚨 CRÍTICO", "badge-critical", "alert-critical")
     elif estado['desgaste_cnc'] >= 50.0:
@@ -294,7 +292,6 @@ def calcular_metricas(estado):
     else:
         riesgo = ("✅ ÓPTIMO", "badge-optimal", "alert-success")
     
-    # Salud de la maquinaria
     salud = max(0, 100 - estado['desgaste_cnc'])
     
     return {
@@ -306,10 +303,7 @@ def calcular_metricas(estado):
         'coste_estandar': coste_estandar
     }
 
-def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100, colores=None):
-    if colores is None:
-        colores = [[0.3, "#64ffda"], [0.6, "#ffc107"], [1.0, "#ff6b6b"]]
-    
+def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100):
     fig = go.Figure(go.Indicator(
         mode = "gauge+number+delta",
         value = valor,
@@ -396,12 +390,10 @@ with st.sidebar:
             </div>
         """, unsafe_allow_html=True)
         
-        # Estado del sistema
         if estado and metricas:
             st.markdown("---")
             st.markdown("### 📊 Estado del Sistema")
             
-            # Barra de salud
             salud = metricas['salud']
             color = "#64ffda" if salud > 70 else "#ffc107" if salud > 40 else "#ff6b6b"
             st.markdown(f"""
@@ -416,7 +408,6 @@ with st.sidebar:
                 </div>
             """, unsafe_allow_html=True)
             
-            # Badge de riesgo
             riesgo_text, riesgo_class, _ = metricas['riesgo']
             st.markdown(f"""
                 <div style="text-align: center; margin-top: 10px;">
@@ -430,7 +421,6 @@ with st.sidebar:
 # 6. CONTENIDO PRINCIPAL
 # ---------------------------------------------------------
 
-# Título del dashboard
 st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <div>
@@ -451,7 +441,6 @@ if menu == "📊 Dashboard y KPIs":
         st.warning("⏳ Esperando datos del worker autónomo en Supabase...")
         st.info("💡 El worker se ejecuta automáticamente cada 10 minutos a través de GitHub Actions")
     else:
-        # Métricas principales en cards
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -493,7 +482,6 @@ if menu == "📊 Dashboard y KPIs":
                 </div>
             """, unsafe_allow_html=True)
         
-        # Segunda fila de métricas
         st.markdown("### 📈 Análisis Detallado")
         col5, col6, col7 = st.columns(3)
         
@@ -524,27 +512,25 @@ if menu == "📊 Dashboard y KPIs":
                 </div>
             """, unsafe_allow_html=True)
         
-        # Gráficos de gauges
         st.markdown("### 🎯 Indicadores Visuales")
         col_g1, col_g2, col_g3 = st.columns(3)
         
         with col_g1:
-            fig1 = crear_grafico_gauge(estado['desgaste_cnc'], "Desgaste CNC", 0, 100)
+            fig1 = crear_grafico_gauge(estado['desgaste_cnc'], "Desgaste CNC")
             st.plotly_chart(fig1, use_container_width=True)
         
         with col_g2:
-            fig2 = crear_grafico_gauge(metricas['salud'], "Salud Maquinaria", 0, 100)
+            fig2 = crear_grafico_gauge(metricas['salud'], "Salud Maquinaria")
             st.plotly_chart(fig2, use_container_width=True)
         
         with col_g3:
-            fig3 = crear_grafico_gauge(metricas['oee_planta'], "OEE Planta", 0, 100)
+            fig3 = crear_grafico_gauge(metricas['oee_planta'], "OEE Planta")
             st.plotly_chart(fig3, use_container_width=True)
 
 elif menu == "📈 Gráficos Avanzados":
     st.markdown("### 📈 Tendencias Históricas de Operación")
     
     if not df.empty:
-        # Gráfico combinado
         fig = make_subplots(
             rows=2, cols=2,
             subplot_titles=("Capital Operativo", "Desgaste CNC", "Ingresos", "Análisis Combinado"),
@@ -552,7 +538,6 @@ elif menu == "📈 Gráficos Avanzados":
                    [{"secondary_y": False}, {"secondary_y": True}]]
         )
         
-        # Capital
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['capital'], 
                       name="Capital", line=dict(color="#64ffda", width=2),
@@ -560,7 +545,6 @@ elif menu == "📈 Gráficos Avanzados":
             row=1, col=1
         )
         
-        # Desgaste
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['desgaste_cnc'], 
                       name="Desgaste CNC", line=dict(color="#ff6b6b", width=2),
@@ -568,14 +552,12 @@ elif menu == "📈 Gráficos Avanzados":
             row=1, col=2
         )
         
-        # Ingresos
         fig.add_trace(
             go.Bar(x=df['created_at'], y=df['ingreso'], 
                    name="Ingresos", marker_color="#4a6cf7"),
             row=2, col=1
         )
         
-        # Combinado
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['capital'], 
                       name="Capital", line=dict(color="#64ffda", width=2)),
@@ -602,7 +584,6 @@ elif menu == "📈 Gráficos Avanzados":
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Estadísticas descriptivas
         st.markdown("### 📊 Estadísticas Descriptivas")
         col_est1, col_est2, col_est3 = st.columns(3)
         
@@ -643,7 +624,6 @@ elif menu == "📋 Tabla de Registros":
     st.markdown("*Tabla detallada con todos los registros volcados de forma autónoma por el worker*")
     
     if not df.empty:
-        # Filtros
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
             search = st.text_input("🔍 Buscar por ID", placeholder="Ej: 1, 2, 3...")
@@ -652,7 +632,6 @@ elif menu == "📋 Tabla de Registros":
         with col_f3:
             max_desgaste = st.slider("Desgaste máximo", 0, 100, 100)
         
-        # Aplicar filtros
         df_filtrado = df.copy()
         if search:
             df_filtrado = df_filtrado[df_filtrado['id'].astype(str).str.contains(search)]
@@ -661,7 +640,6 @@ elif menu == "📋 Tabla de Registros":
         if max_desgaste < 100:
             df_filtrado = df_filtrado[df_filtrado['desgaste_cnc'] <= max_desgaste]
         
-        # Mostrar tabla con estilo
         st.dataframe(
             df_filtrado.sort_values(by="created_at", ascending=False),
             use_container_width=True,
@@ -674,7 +652,6 @@ elif menu == "📋 Tabla de Registros":
             }
         )
         
-        # Exportar
         col_exp1, col_exp2 = st.columns(2)
         with col_exp1:
             csv = df.to_csv(index=False).encode('utf-8')
@@ -701,7 +678,6 @@ elif menu == "🕹️ Simulación y Control":
         cap_base = float(ultimo.get("capital", 150000.0))
         desg_base = float(ultimo.get("desgaste_cnc", 10.0))
         
-        # Estado actual
         st.markdown("### 📊 Estado Actual de la Línea")
         col_act1, col_act2, col_act3 = st.columns(3)
         with col_act1:
@@ -763,4 +739,12 @@ elif menu == "🕹️ Simulación y Control":
                     nuevo_capital = cap_base - coste_mantenimiento
                     ingreso_reparacion = 4500.0
                     try:
-                        sup
+                        supabase.table("registros").insert({
+                            "capital": round(nuevo_capital, 2),
+                            "ingreso": round(ingreso_reparacion, 2),
+                            "desgaste_cnc": round(nuevo_desgaste, 2)
+                        }).execute()
+                        st.success(f"✅ ¡Mantenimiento aplicado con éxito!")
+                        st.info(f"📊 Desgaste: {desg_base:.1f}% → {nuevo_desgaste:.1f}% | Capital: {cap_base:,.0f}€ → {nuevo_capital:,.0f}€")
+                        time.sleep(1)
+                        st.r
