@@ -61,7 +61,7 @@ with st.sidebar:
     
     menu = st.radio(
         "Panel de Navegación",
-        ["📊 Dashboard y KPIs", "📈 Gráficos Avanzados", "📋 Tabla de Registros", "⚙️ Límites y Configuración"]
+        ["📊 Dashboard y KPIs", "📈 Gráficos Avanzados", "📋 Tabla de Registros", "🕹️ Simulación y Control Activo"]
     )
     
     st.markdown("---")
@@ -102,7 +102,6 @@ if menu == "📊 Dashboard y KPIs":
         
         nivel_riesgo = "🚨 CRÍTICO" if desgaste_actual >= 75.0 else ("⚠️ PRECAUCIÓN" if desgaste_actual >= 50.0 else "✅ ÓPTIMO")
 
-        # KPIs Destacados
         k1, k2, k3, k4, k5 = st.columns(5)
         k1.metric("Capital Operativo", f"{capital_actual:,.2f} €", f"{ingreso_actual:,.2f} € rec.")
         k2.metric("Desgaste CNC", f"{desgaste_actual:.1f} %", "Salud Maquinaria", delta_color="inverse" if desgaste_actual >= 75 else "normal")
@@ -110,75 +109,73 @@ if menu == "📊 Dashboard y KPIs":
         k4.metric("Margen Turno", f"{margen_porcentaje:.1f} %", f"{margen_valor:,.2f} €")
         k5.metric("Riesgo", nivel_riesgo)
 
-        st.divider()
-
-        col_r1, col_r2 = st.columns(2)
-        with col_r1:
-            st.subheader("💡 Estado Operativo Actual")
-            st.info(f"El sistema opera bajo un nivel de riesgo **{nivel_riesgo}**. El último ciclo generó un ingreso de **{ingreso_actual:,.2f} €** con un desgaste acumulado en la línea CNC del **{desgaste_actual:.1f}%**.")
-        with col_r2:
-            st.subheader("🛠️ Acciones del Worker")
-            st.success("El worker en GitHub Actions altera las variables estocásticas de producción y las vuelca automáticamente a Supabase.")
-
 elif menu == "📈 Gráficos Avanzados":
     st.title("📈 Tendencias Históricas de Operación")
-    st.markdown("Análisis gráfico independiente de los valores financieros y de desgaste mecánico.")
-
-    if df.empty:
-        st.warning("No hay datos suficientes para mostrar los gráficos.")
-    else:
+    if not df.empty:
         col_g1, col_g2 = st.columns(2)
         with col_g1:
             st.markdown("#### 📈 Evolución del Capital Operativo (€)")
-            if "capital" in df.columns:
-                st.line_chart(df[["created_at", "capital"]].set_index("created_at"), color="#2563eb")
+            st.line_chart(df[["created_at", "capital"]].set_index("created_at"), color="#2563eb")
         with col_g2:
             st.markdown("#### 📉 Evolución del Desgaste CNC (%)")
-            if "desgaste_cnc" in df.columns:
-                st.area_chart(df[["created_at", "desgaste_cnc"]].set_index("created_at"), color="#dc2626")
+            st.area_chart(df[["created_at", "desgaste_cnc"]].set_index("created_at"), color="#dc2626")
 
 elif menu == "📋 Tabla de Registros":
     st.title("📋 Historial Completo en Bruto")
-    st.markdown("Tabla detallada con todos los registros volcados de forma autónoma por el worker.")
-    
-    if df.empty:
-        st.warning("No hay registros disponibles en la base de datos.")
-    else:
+    if not df.empty:
         st.dataframe(df.sort_values(by="created_at", ascending=False), use_container_width=True)
-        
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📥 Descargar Historial en CSV",
-            data=csv,
-            file_name='historial_industrial_supabase.csv',
-            mime='text/csv',
-        )
+        st.download_button("📥 Descargar CSV", data=csv, file_name='historial.csv', mime='text/csv')
 
-elif menu == "⚙️ Límites y Configuración":
-    st.title("⚙️ Gestión de Límites de Máquina y Configuración")
-    st.markdown("Ajusta los parámetros operativos y umbrales de seguridad para la línea CNC.")
-    
-    col_l1, col_l2 = st.columns(2)
-    with col_l1:
-        st.subheader("🎛️ Umbrales de Alerta")
-        limite_desgaste_critico = st.slider("Límite crítico de desgaste CNC (%)", 50.0, 95.0, 75.0)
-        velocidad_maxima = st.slider("Velocidad máxima de rotación (%)", 50, 150, 100)
-    with col_l2:
-        st.subheader("🛡️ Parámetros de Seguridad")
-        parada_emergencia = st.checkbox("Activar bloqueo preventivo ante picos", value=True)
-        modo_mantenimiento = st.checkbox("Forzar pausa de mantenimiento manual", value=False)
-        
-    st.info(f"Configuración actual guardada: Desgaste crítico al **{limite_desgaste_critico}%**, Velocidad tope al **{velocidad_maxima}%**.")
-    
-    st.markdown("---")
-    st.json({
-        "Supabase Conectado": bool(supabase),
-        "Total Entradas en Tabla": len(df) if not df.empty else 0,
-        "Última Sincronización": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
+elif menu == "🕹️ Simulación y Control Activo":
+    st.title("🕹️ Panel de Pruebas y Resolución de Fallos")
+    st.markdown("Interactúa directamente con la línea de producción enviando eventos personalizados a Supabase.")
+
+    if df.empty:
+        st.warning("No hay datos base para simular acciones.")
+    else:
+        ultimo = df.iloc[-1]
+        cap_base = float(ultimo.get("capital", 150000.0))
+        desg_base = float(ultimo.get("desgaste_cnc", 10.0))
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.subheader("🚨 Simular Fallo Crítico / Avería")
+            st.write("Fuerza un fallo mecánico imprevisto que eleva el desgaste y genera costes extraordinarios de revisión.")
+            if st.button("💥 Provocar Avería Mecánica"):
+                nuevo_desgaste = min(100.0, desg_base + 35.0)
+                nuevo_capital = cap_base - 12000.0 # Coste de la avería/parada
+                try:
+                    supabase.table("estado_empresa").insert({
+                        "capital": round(nuevo_capital, 2),
+                        "ingreso": 0.0,
+                        "desgaste_cnc": round(nuevo_desgaste, 2)
+                    }).execute()
+                    st.success("¡Avería simulada con éxito! Revisa los KPIs y la caída de capital.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al registrar avería: {e}")
+
+        with c2:
+            st.subheader("🛠️ Aplicar Mantenimiento / Solución")
+            st.write("Envía al equipo técnico a reparar el sistema: reduce el desgaste casi al mínimo aplicando el coste de reparación.")
+            if st.button("🔧 Ejecutar Mantenimiento Correctivo"):
+                nuevo_desgaste = 5.0 # Se repara casi por completo
+                nuevo_capital = cap_base - 6500.0 # Coste de la intervención técnica
+                try:
+                    supabase.table("estado_empresa").insert({
+                        "capital": round(nuevo_capital, 2),
+                        "ingreso": 4500.0, # Ligero ingreso post-reparación
+                        "desgaste_cnc": round(nuevo_desgaste, 2)
+                    }).execute()
+                    st.success("¡Mantenimiento aplicado! Maquinaria reparada y costes descontados.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al registrar mantenimiento: {e}")
 
 # ---------------------------------------------------------
-# 6. BUCLE DE AUTO-REFRESCO AUTOMÁTICO (STREAMING)
+# 6. BUCLE DE AUTO-REFRESCO
 # ---------------------------------------------------------
 if auto_refresh:
     time.sleep(10)
