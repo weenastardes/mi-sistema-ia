@@ -20,12 +20,7 @@ st.set_page_config(
 # CSS MEJORADO - Diseño profesional y moderno
 st.markdown("""
     <style>
-        /* Fondo y estilos generales */
-        .main {
-            background: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 100%);
-        }
-        
-        /* Tarjetas de métricas */
+        .main { background: linear-gradient(135deg, #0a0e1a 0%, #1a1a2e 100%); }
         .metric-card {
             background: linear-gradient(145deg, #1e2235, #151929);
             padding: 20px;
@@ -34,33 +29,11 @@ st.markdown("""
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             transition: transform 0.2s;
         }
-        .metric-card:hover {
-            transform: translateY(-2px);
-            border-color: #4a6cf7;
-        }
-        .metric-label {
-            color: #8892b0;
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: 600;
-        }
-        .metric-value {
-            color: #ffffff;
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 8px 0;
-        }
-        .metric-delta {
-            color: #64ffda;
-            font-size: 0.9rem;
-        }
-        .metric-delta-negative {
-            color: #ff6b6b;
-            font-size: 0.9rem;
-        }
-        
-        /* Títulos */
+        .metric-card:hover { transform: translateY(-2px); border-color: #4a6cf7; }
+        .metric-label { color: #8892b0; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        .metric-value { color: #ffffff; font-size: 2rem; font-weight: 700; margin: 8px 0; }
+        .metric-delta { color: #64ffda; font-size: 0.9rem; }
+        .metric-delta-negative { color: #ff6b6b; font-size: 0.9rem; }
         .section-title {
             color: #ccd6f6;
             font-size: 1.8rem;
@@ -69,26 +42,9 @@ st.markdown("""
             padding-bottom: 10px;
             margin-bottom: 25px;
         }
-        .section-subtitle {
-            color: #8892b0;
-            font-size: 1rem;
-            margin-bottom: 20px;
-        }
-        
-        /* Sidebar mejorado */
-        .css-1d391kg {
-            background: linear-gradient(180deg, #0a0e1a 0%, #1a1a2e 100%);
-        }
-        .sidebar-logo {
-            text-align: center;
-            padding: 20px 0;
-        }
-        .sidebar-title {
-            color: #ccd6f6;
-            font-size: 1.5rem;
-            font-weight: 700;
-            text-align: center;
-        }
+        .section-subtitle { color: #8892b0; font-size: 1rem; margin-bottom: 20px; }
+        .sidebar-logo { text-align: center; padding: 20px 0; }
+        .sidebar-title { color: #ccd6f6; font-size: 1.5rem; font-weight: 700; text-align: center; }
         .sidebar-status {
             background: rgba(74, 108, 247, 0.1);
             border: 1px solid #4a6cf7;
@@ -96,24 +52,9 @@ st.markdown("""
             padding: 15px;
             margin: 10px 0;
         }
-        
-        /* Tablas */
-        .dataframe {
-            background: #1a1a2e !important;
-            border-radius: 8px !important;
-            border: 1px solid #2a2f45 !important;
-        }
-        .dataframe th {
-            background: #2a2f45 !important;
-            color: #ccd6f6 !important;
-            font-weight: 600 !important;
-        }
-        .dataframe td {
-            color: #e6e6e6 !important;
-            border-color: #2a2f45 !important;
-        }
-        
-        /* Botones */
+        .dataframe { background: #1a1a2e !important; border-radius: 8px !important; border: 1px solid #2a2f45 !important; }
+        .dataframe th { background: #2a2f45 !important; color: #ccd6f6 !important; font-weight: 600 !important; }
+        .dataframe td { color: #e6e6e6 !important; border-color: #2a2f45 !important; }
         .stButton > button {
             background: linear-gradient(135deg, #4a6cf7, #6a4cf7);
             color: white;
@@ -123,41 +64,7 @@ st.markdown("""
             font-weight: 600;
             transition: all 0.3s;
         }
-        .stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(74, 108, 247, 0.4);
-        }
-        .stButton > button:active {
-            transform: translateY(0px);
-        }
-        
-        /* Alertas */
-        .alert-critical {
-            background: rgba(255, 107, 107, 0.15);
-            border-left: 4px solid #ff6b6b;
-            padding: 12px 18px;
-            border-radius: 6px;
-            color: #ff6b6b;
-            font-weight: 600;
-        }
-        .alert-warning {
-            background: rgba(255, 193, 7, 0.15);
-            border-left: 4px solid #ffc107;
-            padding: 12px 18px;
-            border-radius: 6px;
-            color: #ffc107;
-            font-weight: 600;
-        }
-        .alert-success {
-            background: rgba(100, 255, 218, 0.15);
-            border-left: 4px solid #64ffda;
-            padding: 12px 18px;
-            border-radius: 6px;
-            color: #64ffda;
-            font-weight: 600;
-        }
-        
-        /* Badges de estado */
+        .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(74, 108, 247, 0.4); }
         .badge {
             display: inline-block;
             padding: 4px 12px;
@@ -167,64 +74,11 @@ st.markdown("""
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        .badge-critical {
-            background: #ff6b6b;
-            color: #0a0e1a;
-        }
-        .badge-warning {
-            background: #ffc107;
-            color: #0a0e1a;
-        }
-        .badge-optimal {
-            background: #64ffda;
-            color: #0a0e1a;
-        }
-        .badge-info {
-            background: #4a6cf7;
-            color: white;
-        }
-        
-        /* Progress bars personalizadas */
-        .progress-bar {
-            height: 6px;
-            border-radius: 3px;
-            background: #2a2f45;
-            margin: 8px 0;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            border-radius: 3px;
-            transition: width 0.5s ease;
-        }
-        
-        /* Grids y contenedores */
-        .glass-card {
-            background: rgba(26, 26, 46, 0.7);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(42, 47, 69, 0.5);
-            border-radius: 12px;
-            padding: 20px;
-            margin: 10px 0;
-        }
-        
-        /* Scrollbar personalizada */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #0a0e1a;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #4a6cf7;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #6a4cf7;
-        }
-        
-        /* Estilos para métricas en columnas */
+        .badge-critical { background: #ff6b6b; color: #0a0e1a; }
+        .badge-warning { background: #ffc107; color: #0a0e1a; }
+        .badge-optimal { background: #64ffda; color: #0a0e1a; }
+        .progress-bar { height: 6px; border-radius: 3px; background: #2a2f45; margin: 8px 0; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
         .metric-container {
             background: rgba(26, 26, 46, 0.5);
             border-radius: 10px;
@@ -286,11 +140,11 @@ def calcular_metricas(estado):
     oee_planta = max(40.0, 98.5 - (estado['desgaste_cnc'] * 0.45))
     
     if estado['desgaste_cnc'] >= 75.0:
-        riesgo = ("🚨 CRÍTICO", "badge-critical", "alert-critical")
+        riesgo = ("🚨 CRÍTICO", "badge-critical")
     elif estado['desgaste_cnc'] >= 50.0:
-        riesgo = ("⚠️ PRECAUCIÓN", "badge-warning", "alert-warning")
+        riesgo = ("⚠️ PRECAUCIÓN", "badge-warning")
     else:
-        riesgo = ("✅ ÓPTIMO", "badge-optimal", "alert-success")
+        riesgo = ("✅ ÓPTIMO", "badge-optimal")
     
     salud = max(0, 100 - estado['desgaste_cnc'])
     
@@ -305,11 +159,11 @@ def calcular_metricas(estado):
 
 def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100):
     fig = go.Figure(go.Indicator(
-        mode = "gauge+number+delta",
-        value = valor,
-        title = {'text': titulo, 'font': {'color': '#ccd6f6', 'size': 14}},
-        delta = {'reference': 50},
-        gauge = {
+        mode="gauge+number+delta",
+        value=valor,
+        title={'text': titulo, 'font': {'color': '#ccd6f6', 'size': 14}},
+        delta={'reference': 50},
+        gauge={
             'axis': {'range': [min_val, max_val], 'tickfont': {'color': '#8892b0'}},
             'bar': {'color': '#4a6cf7'},
             'steps': [
@@ -357,9 +211,9 @@ with st.sidebar:
     menu = st.radio(
         "📌 Panel de Navegación",
         [
-            "📊 Dashboard y KPIs", 
-            "📈 Gráficos Avanzados", 
-            "📋 Tabla de Registros", 
+            "📊 Dashboard y KPIs",
+            "📈 Gráficos Avanzados",
+            "📋 Tabla de Registros",
             "🕹️ Simulación y Control"
         ],
         index=0
@@ -408,7 +262,7 @@ with st.sidebar:
                 </div>
             """, unsafe_allow_html=True)
             
-            riesgo_text, riesgo_class, _ = metricas['riesgo']
+            riesgo_text, riesgo_class = metricas['riesgo']
             st.markdown(f"""
                 <div style="text-align: center; margin-top: 10px;">
                     <span class="badge {riesgo_class}">{riesgo_text}</span>
@@ -473,7 +327,7 @@ if menu == "📊 Dashboard y KPIs":
             """, unsafe_allow_html=True)
         
         with col4:
-            riesgo_text, _, _ = metricas['riesgo']
+            riesgo_text, _ = metricas['riesgo']
             st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-label">🚨 Nivel de Riesgo</div>
@@ -539,32 +393,32 @@ elif menu == "📈 Gráficos Avanzados":
         )
         
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['capital'], 
+            go.Scatter(x=df['created_at'], y=df['capital'],
                       name="Capital", line=dict(color="#64ffda", width=2),
                       fill='tozeroy', fillcolor='rgba(100, 255, 218, 0.1)'),
             row=1, col=1
         )
         
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['desgaste_cnc'], 
+            go.Scatter(x=df['created_at'], y=df['desgaste_cnc'],
                       name="Desgaste CNC", line=dict(color="#ff6b6b", width=2),
                       fill='tozeroy', fillcolor='rgba(255, 107, 107, 0.1)'),
             row=1, col=2
         )
         
         fig.add_trace(
-            go.Bar(x=df['created_at'], y=df['ingreso'], 
+            go.Bar(x=df['created_at'], y=df['ingreso'],
                    name="Ingresos", marker_color="#4a6cf7"),
             row=2, col=1
         )
         
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['capital'], 
+            go.Scatter(x=df['created_at'], y=df['capital'],
                       name="Capital", line=dict(color="#64ffda", width=2)),
             row=2, col=2
         )
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['desgaste_cnc'] * 1000, 
+            go.Scatter(x=df['created_at'], y=df['desgaste_cnc'] * 1000,
                       name="Desgaste (escalado)", line=dict(color="#ff6b6b", width=2, dash="dash")),
             row=2, col=2
         )
@@ -713,7 +567,7 @@ elif menu == "🕹️ Simulación y Control":
                             "ingreso": 0.0,
                             "desgaste_cnc": round(nuevo_desgaste, 2)
                         }).execute()
-                        st.success(f"✅ ¡Avería simulada con éxito!")
+                        st.success("✅ ¡Avería simulada con éxito!")
                         st.info(f"📊 Desgaste: {desg_base:.1f}% → {nuevo_desgaste:.1f}% | Capital: {cap_base:,.0f}€ → {nuevo_capital:,.0f}€")
                         time.sleep(1)
                         st.rerun()
@@ -744,7 +598,17 @@ elif menu == "🕹️ Simulación y Control":
                             "ingreso": round(ingreso_reparacion, 2),
                             "desgaste_cnc": round(nuevo_desgaste, 2)
                         }).execute()
-                        st.success(f"✅ ¡Mantenimiento aplicado con éxito!")
+                        st.success("✅ ¡Mantenimiento aplicado con éxito!")
                         st.info(f"📊 Desgaste: {desg_base:.1f}% → {nuevo_desgaste:.1f}% | Capital: {cap_base:,.0f}€ → {nuevo_capital:,.0f}€")
                         time.sleep(1)
-                        st.r
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al registrar mantenimiento: {e}")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 7. BUCLE DE AUTO-REFRESCO
+# ---------------------------------------------------------
+if auto_refresh:
+    time.sleep(10)
+    st.rerun()
