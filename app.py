@@ -6,6 +6,9 @@ import time
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # ---------------------------------------------------------
 # 1. CONFIGURACIÓN DE LA PÁGINA
@@ -89,10 +92,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. CONEXIÓN A SUPABASE
+# 2. CONEXIÓN A SUPABASE Y SECRETOS DE CORREO
 # ---------------------------------------------------------
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+
+# Credenciales de Correo desde los Secrets de Streamlit
+EMAIL_SENDER = st.secrets.get("EMAIL_SENDER", "")
+EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "")
+EMAIL_RECEIVER = st.secrets.get("EMAIL_RECEIVER", "")
+SMTP_SERVER = st.secrets.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(st.secrets.get("SMTP_PORT", 587))
 
 @st.cache_resource
 def init_supabase():
@@ -103,13 +113,36 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# 3. FUNCIONES DE UTILIDAD
+# 3. FUNCIONES DE UTILIDAD Y ALERTAS POR CORREO
 # ---------------------------------------------------------
+def enviar_alerta_correo(asunto, cuerpo):
+    """Envía un correo electrónico utilizando la configuración SMTP de los secrets."""
+    if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
+        return False  # Si faltan credenciales, no hace nada
+    
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = EMAIL_RECEIVER
+        msg['Subject'] = asunto
+        
+        msg.attach(MIMEText(cuerpo, 'plain'))
+        
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"Error al enviar el correo: {e}")
+        return False
+
 def cargar_datos_frescos():
     if not supabase:
         return pd.DataFrame()
     try:
-        response = supabase.table("estado_empresa").select("*").order("created_at", desc=False).execute()
+        response = supabase.table("registros").select("*").order("created_at", desc=False).execute()
         if response.data:
             df = pd.DataFrame(response.data)
             if 'created_at' in df.columns:
@@ -188,11 +221,28 @@ def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100):
     return fig
 
 # ---------------------------------------------------------
-# 4. CARGA DE DATOS
+# 4. CARGA DE DATOS Y COMPROBACIÓN DE ALERTAS
 # ---------------------------------------------------------
 df = cargar_datos_frescos()
 estado = get_estado_empresa(df)
 metricas = calcular_metricas(estado) if estado else {}
+
+# Lógica para disparar notificación por correo si el desgaste es crítico
+if estado and estado['desgaste_cnc'] >= 75.0:
+    # Usamos session_state para evitar enviar 50 correos seguidos cada vez que recargue la página en el mismo estado crítico
+    if "alerta_enviada" not in st.session_state:
+        st.session_state["alerta_enviada"] = False
+
+    if not st.session_state["alerta_enviada"]:
+        asunto = "🚨 ALERTA CRÍTICA: Desgaste elevado en Maquinaria CNC"
+        cuerpo = f"""Atención equipo de mantenimiento,\n\nEl sistema Industrias 24/7 ha detectado un nivel crítico en la línea de producción:\n\n- Desgaste CNC: {estado['desgaste_cnc']:.1f}%\n- Capital Operativo actual: {estado['capital']:,.0f} €\n- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\nPor favor, revisen el panel de control de inmediato."""
+        
+        exito = enviar_alerta_correo(asunto, cuerpo)
+        if exito:
+            st.session_state["alerta_enviada"] = True
+else:
+    # Si el desgaste baja (por ejemplo, tras un mantenimiento), reseteamos la alerta
+    st.session_state["alerta_enviada"] = False
 
 # ---------------------------------------------------------
 # 5. BARRA LATERAL MEJORADA
@@ -562,7 +612,7 @@ elif menu == "🕹️ Simulación y Control":
                     nuevo_desgaste = min(100.0, desg_base + intensidad)
                     nuevo_capital = cap_base - coste
                     try:
-                        supabase.table("estado_empresa").insert({
+                        supabase.table("registros").insert({
                             "capital": round(nuevo_capital, 2),
                             "ingreso": 0.0,
                             "desgaste_cnc": round(nuevo_desgaste, 2)
@@ -593,7 +643,7 @@ elif menu == "🕹️ Simulación y Control":
                     nuevo_capital = cap_base - coste_mantenimiento
                     ingreso_reparacion = 4500.0
                     try:
-                        supabase.table("estado_empresa").insert({
+                        supabase.table("registros").insert({
                             "capital": round(nuevo_capital, 2),
                             "ingreso": round(ingreso_reparacion, 2),
                             "desgaste_cnc": round(nuevo_desgaste, 2)
