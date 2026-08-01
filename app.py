@@ -109,7 +109,7 @@ def cargar_datos_frescos():
     if not supabase:
         return pd.DataFrame()
     try:
-        response = supabase.table("registros").select("*").order("created_at", desc=False).execute()
+        response = supabase.table("estado_empresa").select("*").order("created_at", desc=False).execute()
         if response.data:
             df = pd.DataFrame(response.data)
             if 'created_at' in df.columns:
@@ -394,15 +394,15 @@ elif menu == "📈 Gráficos Avanzados":
         
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['capital'],
-                      name="Capital", line=dict(color="#64ffda", width=2),
-                      fill='tozeroy', fillcolor='rgba(100, 255, 218, 0.1)'),
+                       name="Capital", line=dict(color="#64ffda", width=2),
+                       fill='tozeroy', fillcolor='rgba(100, 255, 218, 0.1)'),
             row=1, col=1
         )
         
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['desgaste_cnc'],
-                      name="Desgaste CNC", line=dict(color="#ff6b6b", width=2),
-                      fill='tozeroy', fillcolor='rgba(255, 107, 107, 0.1)'),
+                       name="Desgaste CNC", line=dict(color="#ff6b6b", width=2),
+                       fill='tozeroy', fillcolor='rgba(255, 107, 107, 0.1)'),
             row=1, col=2
         )
         
@@ -414,12 +414,12 @@ elif menu == "📈 Gráficos Avanzados":
         
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['capital'],
-                      name="Capital", line=dict(color="#64ffda", width=2)),
+                       name="Capital", line=dict(color="#64ffda", width=2)),
             row=2, col=2
         )
         fig.add_trace(
             go.Scatter(x=df['created_at'], y=df['desgaste_cnc'] * 1000,
-                      name="Desgaste (escalado)", line=dict(color="#ff6b6b", width=2, dash="dash")),
+                       name="Desgaste (escalado)", line=dict(color="#ff6b6b", width=2, dash="dash")),
             row=2, col=2
         )
         
@@ -562,7 +562,7 @@ elif menu == "🕹️ Simulación y Control":
                     nuevo_desgaste = min(100.0, desg_base + intensidad)
                     nuevo_capital = cap_base - coste
                     try:
-                        supabase.table("registros").insert({
+                        supabase.table("estado_empresa").insert({
                             "capital": round(nuevo_capital, 2),
                             "ingreso": 0.0,
                             "desgaste_cnc": round(nuevo_desgaste, 2)
@@ -593,7 +593,7 @@ elif menu == "🕹️ Simulación y Control":
                     nuevo_capital = cap_base - coste_mantenimiento
                     ingreso_reparacion = 4500.0
                     try:
-                        supabase.table("registros").insert({
+                        supabase.table("estado_empresa").insert({
                             "capital": round(nuevo_capital, 2),
                             "ingreso": round(ingreso_reparacion, 2),
                             "desgaste_cnc": round(nuevo_desgaste, 2)
