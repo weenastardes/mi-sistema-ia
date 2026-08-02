@@ -99,7 +99,10 @@ class MonitorSistema:
             logger.info(f"✅ Registro guardado: Capital: {registro['capital']:.2f}, Ingreso: {registro['ingreso']:.2f}, Desgaste: {registro['desgaste_cnc']:.1f}")
             
             if anomalias and self.email_user and self.email_pass:
+                logger.info("🚨 ¡Anomalías detectadas! Intentando enviar correo...")
                 self.enviar_alerta(registro, anomalias)
+            else:
+                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) o faltan credenciales. User: {bool(self.email_user)}, Pass: {bool(self.email_pass)}")
             
             return True, anomalias
         except Exception as e:
