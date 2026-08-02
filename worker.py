@@ -46,18 +46,19 @@ class MonitorSistema:
         # Ampliado hasta 55 para garantizar que salten alertas de desgaste alto y probar los correos
         desgaste_base = random.uniform(5, 55)
         
+        # Ajuste de ingresos: se garantiza un suelo mínimo incluso en desgaste alto para evitar ceros
         if desgaste_base > 40:
-            ingreso = random.uniform(1000, 3000)
+            ingreso = random.uniform(1500, 3500)
         elif desgaste_base > 25:
-            ingreso = random.uniform(2000, 5000)
+            ingreso = random.uniform(3000, 6000)
         elif desgaste_base > 20:
-            ingreso = random.uniform(4000, 7000)
+            ingreso = random.uniform(5000, 7500)
         elif desgaste_base > 15:
-            ingreso = random.uniform(6000, 8500)
+            ingreso = random.uniform(6500, 8500)
         else:
             ingreso = random.uniform(8000, 10000)
         
-        nuevo_capital = capital_anterior + ingreso - (desgaste_base * 50)
+        nuevo_capital = capital_anterior + ingreso - (desgaste_base * 40)
         
         if nuevo_capital < 150000:
             nuevo_capital = nuevo_capital + 10000
