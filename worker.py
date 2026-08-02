@@ -43,9 +43,12 @@ class MonitorSistema:
     def generar_registro(self):
         capital_anterior = self.obtener_capital_anterior()
         
-        desgaste_base = random.uniform(5, 30)
+        # Ampliado hasta 55 para garantizar que salten alertas de desgaste alto y probar los correos
+        desgaste_base = random.uniform(5, 55)
         
-        if desgaste_base > 25:
+        if desgaste_base > 40:
+            ingreso = random.uniform(1000, 3000)
+        elif desgaste_base > 25:
             ingreso = random.uniform(2000, 5000)
         elif desgaste_base > 20:
             ingreso = random.uniform(4000, 7000)
@@ -59,13 +62,14 @@ class MonitorSistema:
         if nuevo_capital < 150000:
             nuevo_capital = nuevo_capital + 10000
         
-        fecha_canarias = datetime.now(self.zona_canarias)
+        # Formato de texto plano con la hora exacta de Canarias (sin desfase UTC)
+        fecha_canarias = datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M:%S')
         
         return {
             'capital': round(nuevo_capital, 2),
             'ingreso': round(ingreso, 2),
             'desgaste_cnc': round(desgaste_base, 2),
-            'created_at': fecha_canarias.isoformat()
+            'created_at': fecha_canarias
         }
 
     def verificar_anomalias(self, registro):
