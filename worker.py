@@ -147,7 +147,7 @@ def main():
     logger.info(f"📍 Zona: Atlantic/Canary - Hora inicio: {datetime.now(pytz.timezone('Atlantic/Canary')).strftime('%H:%M:%S')}")
     
     # Define el intervalo de ejecución en segundos (ej. 60 = 1 minuto, 300 = 5 minutos)
-    INTERVALO_SEGUNDOS = 60  
+    INTERVALO_SEGUNDOS = 30
     
     try:
         monitor = MonitorSistema()
