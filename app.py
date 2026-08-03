@@ -159,7 +159,7 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# 4. FUNCIONES DE UTILIDAD Y ALERTAS POR CORREO
+# 4. FUNCIONES DE UTILIDAD Y NOTIFICACIONES POR CORREO
 # ---------------------------------------------------------
 def enviar_alerta_correo(asunto, cuerpo):
     """Envía un correo electrónico utilizando la configuración SMTP de los secrets."""
@@ -267,7 +267,7 @@ def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100):
     return fig
 
 # ---------------------------------------------------------
-# 5. CARGA DE DATOS Y COMPROBACIÓN DE ALERTAS
+# 5. CARGA DE DATOS Y COMPROBACIÓN DE NOTIFICACIÓN POR CADA NUEVO DATO
 # ---------------------------------------------------------
 df = cargar_datos_frescos()
 estado = get_estado_empresa(df)
@@ -282,28 +282,33 @@ else:
     tendencia_capital = tendencia_desgaste = tendencia_ingreso = "→"
     cambio_capital = cambio_desgaste = cambio_ingreso = 0
 
-# Alerta por correo si desgaste crítico
-if estado and estado['desgaste_cnc'] >= 75.0:
-    if "alerta_enviada" not in st.session_state:
-        st.session_state["alerta_enviada"] = False
+# ENVÍO DE CORREO AUTOMÁTICO CADA VEZ QUE LLEGA UN NUEVO REGISTRO
+if estado and not df.empty:
+    ultimo_id = int(df.iloc[-1].get("id", 0))
+    
+    if "ultimo_correo_id" not in st.session_state:
+        st.session_state["ultimo_correo_id"] = -1
 
-    if not st.session_state["alerta_enviada"]:
-        asunto = "🚨 ALERTA CRÍTICA: Desgaste elevado en Maquinaria CNC"
-        cuerpo = f"""Atención equipo de mantenimiento,
-
-El sistema Industrias 24/7 ha detectado un nivel crítico en la línea de producción:
-
-- Desgaste CNC: {estado['desgaste_cnc']:.1f}%
-- Capital Operativo actual: {estado['capital']:,.0f} €
-- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-Por favor, revisen el panel de control de inmediato."""
+    if st.session_state["ultimo_correo_id"] != ultimo_id:
+        desgaste_val = estado['desgaste_cnc']
+        
+        # Determinar si la fábrica está en estado óptimo o no
+        if desgaste_val >= 75.0:
+            estado_fabrica = "🚨 CRÍTICO"
+            es_optimo = "No (Riesgo Crítico)"
+        elif desgaste_val >= 50.0:
+            estado_fabrica = "⚠️ PRECAUCIÓN"
+            es_optimo = "No (Precaución moderada)"
+        else:
+            estado_fabrica = "✅ ÓPTIMO"
+            es_optimo = "Sí (Funcionamiento Óptimo)"
+            
+        asunto = f"🏭 Reporte Industrias 24/7 - Registro #{ultimo_id}"
+        cuerpo = f"""Hola,\n\nSe ha recibido una nueva entrada de datos en el sistema:\n\n- ID de Registro: {ultimo_id}\n- Estado de la Fábrica: {estado_fabrica} (Óptimo: {es_optimo})\n- Desgaste CNC: {desgaste_val:.1f}%\n- Ingresos Recientes: {estado['ingreso']:,.0f} €\n- Capital Operativo: {estado['capital']:,.0f} €\n- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\nPuedes consultar el panel completo en línea."""
         
         exito = enviar_alerta_correo(asunto, cuerpo)
         if exito:
-            st.session_state["alerta_enviada"] = True
-else:
-    st.session_state["alerta_enviada"] = False
+            st.session_state["ultimo_correo_id"] = ultimo_id
 
 # ---------------------------------------------------------
 # 6. BARRA LATERAL MEJORADA
@@ -531,7 +536,6 @@ elif menu == "📈 Gráficos Avanzados":
     st.markdown("### 📈 Tendencias Históricas de Operación")
     
     if not df.empty:
-        # --- FILTRO DE FECHAS ---
         st.markdown("### 📅 Filtrar por fecha")
         col_fecha1, col_fecha2 = st.columns(2)
         with col_fecha1:
@@ -545,7 +549,6 @@ elif menu == "📈 Gráficos Avanzados":
                 value=df['created_at'].max() if not df.empty else datetime.now()
             )
         
-        # Filtrar el DataFrame
         if not df.empty:
             df_filtrado_fechas = df[
                 (df['created_at'].dt.date >= fecha_inicio) & 
@@ -561,7 +564,6 @@ elif menu == "📈 Gráficos Avanzados":
         else:
             df_graficos = df
         
-        # --- GRÁFICOS ---
         fig = make_subplots(
             rows=2, cols=2,
             subplot_titles=("Capital Operativo", "Desgaste CNC", "Ingresos", "Análisis Combinado"),
@@ -651,7 +653,7 @@ elif menu == "📈 Gráficos Avanzados":
         st.info("💡 No hay datos suficientes para mostrar gráficos")
 
 # ---------------------------------------------------------
-# 10. MENÚ: TABLA DE REGISTROS (CORREGIDO)
+# 10. MENÚ: TABLA DE REGISTROS
 # ---------------------------------------------------------
 elif menu == "📋 Tabla de Registros":
     st.markdown("### 📋 Historial Completo en Bruto")
@@ -674,13 +676,22 @@ elif menu == "📋 Tabla de Registros":
         if max_desgaste < 100:
             df_filtrado = df_filtrado[df_filtrado['desgaste_cnc'] <= max_desgaste]
         
-        # --- TABLA CON COLORES EN DESGASTE (CORREGIDO: map en lugar de applymap) ---
         styled_df = df_filtrado.sort_values(by="created_at", ascending=False).style.map(
             color_desgaste, subset=['desgaste_cnc']
         )
         
+        # --- CONFIGURACIÓN DE PANTALLA DE FILAS (NUEVO) ---
+        col_pag1, col_pag2 = st.columns([2, 2])
+        with col_pag1:
+            num_filas = st.selectbox("Número de filas a mostrar:", [10, 25, 50, 100, "Todas"], index=0)
+        
+        if num_filas != "Todas":
+            df_a_mostrar = styled_df.data.head(int(num_filas)).style.map(color_desgaste, subset=['desgaste_cnc'])
+        else:
+            df_a_mostrar = styled_df
+
         st.dataframe(
-            styled_df,
+            df_a_mostrar,
             use_container_width=True,
             column_config={
                 "id": "ID",
@@ -702,7 +713,7 @@ elif menu == "📋 Tabla de Registros":
                 use_container_width=True
             )
         with col_exp2:
-            st.info(f"📊 Mostrando {len(df_filtrado)} de {len(df)} registros")
+            st.info(f"📊 Mostrando registros filtrados (Total en base de datos: {len(df)})")
     else:
         st.warning("No hay registros disponibles")
 
