@@ -4,13 +4,28 @@ import smtplib
 import logging
 import pytz
 import time
+import threading
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from supabase import create_client, Client
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Servidor HTTP ultraligero para mantener activo el Web Service gratuito en Render
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Worker y Web Service activos y funcionando correctamente!")
+
+def run_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    logger.info(f"🌐 Servidor web secundario escuchando en el puerto {port}")
+    server.serve_forever()
 
 class MonitorSistema:
     def __init__(self):
@@ -143,10 +158,13 @@ class MonitorSistema:
             logger.error(f"❌ Error email: {e}")
 
 def main():
+    # 1. Lanzamos el servidor HTTP en un hilo separado para cumplir con Render
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
+
     logger.info("🚀 Iniciando worker en bucle continuo...")
     logger.info(f"📍 Zona: Atlantic/Canary - Hora inicio: {datetime.now(pytz.timezone('Atlantic/Canary')).strftime('%H:%M:%S')}")
     
-    # Define el intervalo de ejecución en segundos (ej. 60 = 1 minuto, 300 = 5 minutos)
     INTERVALO_SEGUNDOS = 30
     
     try:
