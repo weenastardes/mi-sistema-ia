@@ -118,7 +118,7 @@ supabase = init_supabase()
 def enviar_alerta_correo(asunto, cuerpo):
     """Envía un correo electrónico utilizando la configuración SMTP de los secrets."""
     if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
-        return False  # Si faltan credenciales, no hace nada
+        return False  
     
     try:
         msg = MIMEMultipart()
@@ -146,7 +146,8 @@ def cargar_datos_frescos():
         if response.data:
             df = pd.DataFrame(response.data)
             if 'created_at' in df.columns:
-                df['created_at'] = pd.to_datetime(df['created_at'])
+                # CORRECCIÓN DE FECHAS: Usar format='mixed' para evitar fallos de formato con Supabase
+                df['created_at'] = pd.to_datetime(df['created_at'], format='mixed', errors='coerce')
             return df
     except Exception as e:
         st.error(f"Error al conectar con Supabase: {e}")
@@ -227,9 +228,7 @@ df = cargar_datos_frescos()
 estado = get_estado_empresa(df)
 metricas = calcular_metricas(estado) if estado else {}
 
-# Lógica para disparar notificación por correo si el desgaste es crítico
 if estado and estado['desgaste_cnc'] >= 75.0:
-    # Usamos session_state para evitar enviar 50 correos seguidos cada vez que recargue la página en el mismo estado crítico
     if "alerta_enviada" not in st.session_state:
         st.session_state["alerta_enviada"] = False
 
@@ -241,7 +240,6 @@ if estado and estado['desgaste_cnc'] >= 75.0:
         if exito:
             st.session_state["alerta_enviada"] = True
 else:
-    # Si el desgaste baja (por ejemplo, tras un mantenimiento), reseteamos la alerta
     st.session_state["alerta_enviada"] = False
 
 # ---------------------------------------------------------
@@ -614,7 +612,7 @@ elif menu == "🕹️ Simulación y Control":
                     try:
                         supabase.table("registros").insert({
                             "capital": round(nuevo_capital, 2),
-                            "ingreso": 0.0,
+                            "ingreso": 1500.0,  # Ingreso mínimo de soporte para evitar ceros
                             "desgaste_cnc": round(nuevo_desgaste, 2)
                         }).execute()
                         st.success("✅ ¡Avería simulada con éxito!")
