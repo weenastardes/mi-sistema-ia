@@ -3,6 +3,7 @@ import random
 import smtplib
 import logging
 import pytz
+import time
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -101,8 +102,8 @@ class MonitorSistema:
             if anomalias and self.email_user and self.email_pass:
                 logger.info("🚨 ¡Anomalías detectadas! Intentando enviar correo...")
                 self.enviar_alerta(registro, anomalias)
-            else:
-                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) o faltan credenciales. User: {bool(self.email_user)}, Pass: {bool(self.email_pass)}")
+            elif anomalias:
+                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) pero faltan credenciales de email. User: {bool(self.email_user)}, Pass: {bool(self.email_pass)}")
             
             return True, anomalias
         except Exception as e:
@@ -142,21 +143,36 @@ class MonitorSistema:
             logger.error(f"❌ Error email: {e}")
 
 def main():
-    logger.info("🚀 Iniciando worker...")
-    logger.info(f"📍 Zona: Atlantic/Canary - Hora: {datetime.now(pytz.timezone('Atlantic/Canary')).strftime('%H:%M:%S')}")
+    logger.info("🚀 Iniciando worker en bucle continuo...")
+    logger.info(f"📍 Zona: Atlantic/Canary - Hora inicio: {datetime.now(pytz.timezone('Atlantic/Canary')).strftime('%H:%M:%S')}")
+    
+    # Define el intervalo de ejecución en segundos (ej. 60 = 1 minuto, 300 = 5 minutos)
+    INTERVALO_SEGUNDOS = 60  
     
     try:
         monitor = MonitorSistema()
-        success, anomalias = monitor.guardar_registro()
-        
-        if success:
-            logger.info("✅ Proceso completado")
-            if anomalias:
-                logger.warning(f"⚠️ {len(anomalias)} anomalías")
-        else:
-            logger.error("❌ Error en el proceso")
     except Exception as e:
-        logger.error(f"❌ Error crítico: {e}")
+        logger.error(f"❌ Error crítico al inicializar el monitor: {e}")
+        return
+
+    while True:
+        try:
+            logger.info("--- Ejecutando ciclo de monitorización ---")
+            success, anomalias = monitor.guardar_registro()
+            
+            if success:
+                if anomalias:
+                    logger.warning(f"⚠️ Ciclo completado con {len(anomalias)} anomalías.")
+                else:
+                    logger.info("✅ Ciclo completado sin incidencias.")
+            else:
+                logger.error("❌ Falló el almacenamiento de este ciclo.")
+                
+        except Exception as e:
+            logger.error(f"❌ Error inesperado en el bucle: {e}")
+            
+        logger.info(f"⏳ Esperando {INTERVALO_SEGUNDOS} segundos para el siguiente ciclo...\n")
+        time.sleep(INTERVALO_SEGUNDOS)
 
 if __name__ == "__main__":
     main()
