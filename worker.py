@@ -1,13 +1,11 @@
 import os
 import random
-import smtplib
 import logging
 import pytz
 import time
 import threading
+import requests
 from datetime import datetime
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from supabase import create_client, Client
 
@@ -38,7 +36,7 @@ class MonitorSistema:
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
         
         self.email_user = os.getenv('EMAIL_USER')
-        self.email_pass = os.getenv('EMAIL_PASS')
+        self.resend_key = os.getenv('RESEND_API_KEY')
         self.zona_canarias = pytz.timezone('Atlantic/Canary')
         
         # Umbrales para anomalías
@@ -114,11 +112,11 @@ class MonitorSistema:
             
             logger.info(f"✅ Registro guardado: Capital: {registro['capital']:.2f}, Ingreso: {registro['ingreso']:.2f}, Desgaste: {registro['desgaste_cnc']:.1f}")
             
-            if anomalias and self.email_user and self.email_pass:
-                logger.info("🚨 ¡Anomalías detectadas! Intentando enviar correo...")
+            if anomalias and self.email_user and self.resend_key:
+                logger.info("🚨 ¡Anomalías detectadas! Intentando enviar correo mediante Resend...")
                 self.enviar_alerta(registro, anomalias)
             elif anomalias:
-                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) pero faltan credenciales de email. User: {bool(self.email_user)}, Pass: {bool(self.email_pass)}")
+                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) pero faltan credenciales de email o RESEND_API_KEY. User: {bool(self.email_user)}, Key: {bool(self.resend_key)}")
             
             return True, anomalias
         except Exception as e:
@@ -127,38 +125,41 @@ class MonitorSistema:
 
     def enviar_alerta(self, registro, anomalias):
         try:
-            msg = MIMEMultipart()
-            msg['From'] = self.email_user
-            msg['To'] = self.email_user
-            msg['Subject'] = f"🚨 ALERTA Sistema {datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M')}"
+            lista_html = "".join([f"<li>{a}</li>" for a in anomalias])
             
-            body = f"""
-            <h2>🚨 Alerta del Sistema</h2>
+            html_content = f"""
+            <h2>🚨 Alerta del Sistema Industrial</h2>
             <p><b>Fecha:</b> {registro['created_at']}</p>
             <p><b>Capital:</b> ${registro['capital']:,.2f}</p>
             <p><b>Ingreso:</b> ${registro['ingreso']:,.2f}</p>
             <p><b>Desgaste CNC:</b> {registro['desgaste_cnc']:.1f}%</p>
-            <h3>⚠️ Anomalías:</h3>
-            <ul>
+            <h3>⚠️ Anomalías detectadas:</h3>
+            <ul>{lista_html}</ul>
             """
-            for a in anomalias:
-                body += f"<li>{a}</li>"
-            body += "</ul>"
+
+            headers = {
+                "Authorization": f"Bearer {self.resend_key}",
+                "Content-Type": "application/json"
+            }
             
-            msg.attach(MIMEText(body, 'html'))
+            data = {
+                "from": "onboarding@resend.dev",
+                "to": self.email_user,
+                "subject": f"🚨 ALERTA Sistema {datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M')}",
+                "html": html_content
+            }
+
+            response = requests.post("https://api.resend.com/emails", json=data, headers=headers)
             
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(self.email_user, self.email_pass)
-            server.send_message(msg)
-            server.quit()
-            
-            logger.info("📧 Alerta enviada")
+            if response.status_code == 200:
+                logger.info("📧 Alerta enviada exitosamente a través de Resend")
+            else:
+                logger.error(f"❌ Error al enviar con Resend: {response.text}")
+
         except Exception as e:
             logger.error(f"❌ Error email: {e}")
 
 def main():
-    # 1. Lanzamos el servidor HTTP en un hilo separado para cumplir con Render
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
