@@ -651,7 +651,7 @@ elif menu == "📈 Gráficos Avanzados":
         st.info("💡 No hay datos suficientes para mostrar gráficos")
 
 # ---------------------------------------------------------
-# 10. MENÚ: TABLA DE REGISTROS
+# 10. MENÚ: TABLA DE REGISTROS (CORREGIDO)
 # ---------------------------------------------------------
 elif menu == "📋 Tabla de Registros":
     st.markdown("### 📋 Historial Completo en Bruto")
@@ -674,8 +674,8 @@ elif menu == "📋 Tabla de Registros":
         if max_desgaste < 100:
             df_filtrado = df_filtrado[df_filtrado['desgaste_cnc'] <= max_desgaste]
         
-        # --- TABLA CON COLORES EN DESGASTE ---
-        styled_df = df_filtrado.sort_values(by="created_at", ascending=False).style.applymap(
+        # --- TABLA CON COLORES EN DESGASTE (CORREGIDO: map en lugar de applymap) ---
+        styled_df = df_filtrado.sort_values(by="created_at", ascending=False).style.map(
             color_desgaste, subset=['desgaste_cnc']
         )
         
