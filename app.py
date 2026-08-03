@@ -88,11 +88,57 @@ st.markdown("""
             padding: 15px;
             border: 1px solid rgba(42, 47, 69, 0.3);
         }
+        /* Estado de conexión */
+        .status-connected {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(100, 255, 218, 0.1);
+            border-radius: 8px;
+            border: 1px solid #64ffda;
+        }
+        .status-disconnected {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 107, 107, 0.1);
+            border-radius: 8px;
+            border: 1px solid #ff6b6b;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. CONEXIÓN A SUPABASE Y SECRETOS DE CORREO
+# 2. FUNCIONES DE UTILIDAD PARA TENDENCIAS Y COLORES
+# ---------------------------------------------------------
+
+def calcular_tendencia(df, columna):
+    """Calcula si el valor ha subido o bajado respecto al registro anterior"""
+    if len(df) < 2:
+        return "→", 0
+    ultimo = df[columna].iloc[-1]
+    anterior = df[columna].iloc[-2]
+    cambio = ((ultimo - anterior) / anterior) * 100 if anterior != 0 else 0
+    if cambio > 0:
+        return "▲", cambio
+    elif cambio < 0:
+        return "▼", cambio
+    else:
+        return "→", 0
+
+def color_desgaste(val):
+    """Devuelve color según nivel de desgaste para la tabla"""
+    if val > 60:
+        return 'background-color: #ff4444; color: white; font-weight: bold;'
+    elif val > 30:
+        return 'background-color: #ffaa00; color: black; font-weight: bold;'
+    else:
+        return 'background-color: #00cc66; color: white; font-weight: bold;'
+
+# ---------------------------------------------------------
+# 3. CONEXIÓN A SUPABASE Y SECRETOS DE CORREO
 # ---------------------------------------------------------
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
@@ -113,7 +159,7 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# 3. FUNCIONES DE UTILIDAD Y ALERTAS POR CORREO
+# 4. FUNCIONES DE UTILIDAD Y ALERTAS POR CORREO
 # ---------------------------------------------------------
 def enviar_alerta_correo(asunto, cuerpo):
     """Envía un correo electrónico utilizando la configuración SMTP de los secrets."""
@@ -146,7 +192,6 @@ def cargar_datos_frescos():
         if response.data:
             df = pd.DataFrame(response.data)
             if 'created_at' in df.columns:
-                # CORRECCIÓN DE FECHAS: Usar format='mixed' para evitar fallos de formato con Supabase
                 df['created_at'] = pd.to_datetime(df['created_at'], format='mixed', errors='coerce')
             return df
     except Exception as e:
@@ -222,19 +267,37 @@ def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100):
     return fig
 
 # ---------------------------------------------------------
-# 4. CARGA DE DATOS Y COMPROBACIÓN DE ALERTAS
+# 5. CARGA DE DATOS Y COMPROBACIÓN DE ALERTAS
 # ---------------------------------------------------------
 df = cargar_datos_frescos()
 estado = get_estado_empresa(df)
 metricas = calcular_metricas(estado) if estado else {}
 
+# Calcular tendencias si hay datos
+if not df.empty and len(df) > 1:
+    tendencia_capital, cambio_capital = calcular_tendencia(df, 'capital')
+    tendencia_desgaste, cambio_desgaste = calcular_tendencia(df, 'desgaste_cnc')
+    tendencia_ingreso, cambio_ingreso = calcular_tendencia(df, 'ingreso')
+else:
+    tendencia_capital = tendencia_desgaste = tendencia_ingreso = "→"
+    cambio_capital = cambio_desgaste = cambio_ingreso = 0
+
+# Alerta por correo si desgaste crítico
 if estado and estado['desgaste_cnc'] >= 75.0:
     if "alerta_enviada" not in st.session_state:
         st.session_state["alerta_enviada"] = False
 
     if not st.session_state["alerta_enviada"]:
         asunto = "🚨 ALERTA CRÍTICA: Desgaste elevado en Maquinaria CNC"
-        cuerpo = f"""Atención equipo de mantenimiento,\n\nEl sistema Industrias 24/7 ha detectado un nivel crítico en la línea de producción:\n\n- Desgaste CNC: {estado['desgaste_cnc']:.1f}%\n- Capital Operativo actual: {estado['capital']:,.0f} €\n- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\nPor favor, revisen el panel de control de inmediato."""
+        cuerpo = f"""Atención equipo de mantenimiento,
+
+El sistema Industrias 24/7 ha detectado un nivel crítico en la línea de producción:
+
+- Desgaste CNC: {estado['desgaste_cnc']:.1f}%
+- Capital Operativo actual: {estado['capital']:,.0f} €
+- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Por favor, revisen el panel de control de inmediato."""
         
         exito = enviar_alerta_correo(asunto, cuerpo)
         if exito:
@@ -243,7 +306,7 @@ else:
     st.session_state["alerta_enviada"] = False
 
 # ---------------------------------------------------------
-# 5. BARRA LATERAL MEJORADA
+# 6. BARRA LATERAL MEJORADA
 # ---------------------------------------------------------
 with st.sidebar:
     st.markdown("""
@@ -318,9 +381,31 @@ with st.sidebar:
             """, unsafe_allow_html=True)
     else:
         st.warning("⏳ Esperando datos del worker...")
+    
+    # --- INDICADOR DE CONEXIÓN A SUPABASE ---
+    st.markdown("---")
+    st.markdown("### 🔌 Estado del Sistema")
+    
+    try:
+        test = supabase.table("registros").select("count").limit(1).execute()
+        st.markdown("""
+            <div class="status-connected">
+                <span style="color: #64ffda;">●</span>
+                <span style="color: #ccd6f6;">Supabase conectado</span>
+                <span style="margin-left: auto; font-size: 0.7rem; color: #64ffda;">✅</span>
+            </div>
+        """, unsafe_allow_html=True)
+    except:
+        st.markdown("""
+            <div class="status-disconnected">
+                <span style="color: #ff6b6b;">●</span>
+                <span style="color: #ccd6f6;">Supabase desconectado</span>
+                <span style="margin-left: auto; font-size: 0.7rem; color: #ff6b6b;">❌</span>
+            </div>
+        """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 6. CONTENIDO PRINCIPAL
+# 7. CONTENIDO PRINCIPAL
 # ---------------------------------------------------------
 
 st.markdown("""
@@ -336,6 +421,9 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+# ---------------------------------------------------------
+# 8. MENÚ: DASHBOARD Y KPIs
+# ---------------------------------------------------------
 if menu == "📊 Dashboard y KPIs":
     st.markdown("### 📊 KPIs Principales")
     
@@ -350,7 +438,10 @@ if menu == "📊 Dashboard y KPIs":
                 <div class="metric-card">
                     <div class="metric-label">💰 Capital Operativo</div>
                     <div class="metric-value">{estado['capital']:,.0f} €</div>
-                    <div class="metric-delta">+{estado['ingreso']:,.0f} € (último ingreso)</div>
+                    <div class="metric-delta">
+                        {tendencia_capital} {cambio_capital:.1f}% (último cambio)
+                        <span style="color: #8892b0; font-size: 0.8rem;">| Ingreso: +{estado['ingreso']:,.0f} €</span>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -361,7 +452,10 @@ if menu == "📊 Dashboard y KPIs":
                 <div class="metric-card">
                     <div class="metric-label">⚙️ Desgaste CNC</div>
                     <div class="metric-value">{desgaste:.1f}%</div>
-                    <div class="{color_delta}">Estado: {'⚠️ Crítico' if desgaste > 70 else '⚠️ Atención' if desgaste > 40 else '✅ Normal'}</div>
+                    <div class="{color_delta}">
+                        {tendencia_desgaste} {cambio_desgaste:.1f}% | 
+                        Estado: {'⚠️ Crítico' if desgaste > 70 else '⚠️ Atención' if desgaste > 40 else '✅ Normal'}
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -411,6 +505,7 @@ if menu == "📊 Dashboard y KPIs":
                     <div style="color: #8892b0; font-size: 0.85rem;">📦 Último Ingreso</div>
                     <div style="color: #64ffda; font-size: 1.8rem; font-weight: 700;">{estado['ingreso']:,.0f} €</div>
                     <div style="color: #8892b0; font-size: 0.9rem;">Costo estándar: {metricas['coste_estandar']:,.0f} €</div>
+                    <div style="color: #8892b0; font-size: 0.8rem;">{tendencia_ingreso} {cambio_ingreso:.1f}%</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -429,10 +524,44 @@ if menu == "📊 Dashboard y KPIs":
             fig3 = crear_grafico_gauge(metricas['oee_planta'], "OEE Planta")
             st.plotly_chart(fig3, use_container_width=True)
 
+# ---------------------------------------------------------
+# 9. MENÚ: GRÁFICOS AVANZADOS
+# ---------------------------------------------------------
 elif menu == "📈 Gráficos Avanzados":
     st.markdown("### 📈 Tendencias Históricas de Operación")
     
     if not df.empty:
+        # --- FILTRO DE FECHAS ---
+        st.markdown("### 📅 Filtrar por fecha")
+        col_fecha1, col_fecha2 = st.columns(2)
+        with col_fecha1:
+            fecha_inicio = st.date_input(
+                "Fecha de inicio", 
+                value=df['created_at'].min() if not df.empty else datetime.now()
+            )
+        with col_fecha2:
+            fecha_fin = st.date_input(
+                "Fecha de fin", 
+                value=df['created_at'].max() if not df.empty else datetime.now()
+            )
+        
+        # Filtrar el DataFrame
+        if not df.empty:
+            df_filtrado_fechas = df[
+                (df['created_at'].dt.date >= fecha_inicio) & 
+                (df['created_at'].dt.date <= fecha_fin)
+            ]
+            
+            if df_filtrado_fechas.empty:
+                st.warning("⚠️ No hay datos en el rango de fechas seleccionado")
+                df_graficos = df
+            else:
+                df_graficos = df_filtrado_fechas
+                st.success(f"✅ Mostrando {len(df_graficos)} registros en el rango seleccionado")
+        else:
+            df_graficos = df
+        
+        # --- GRÁFICOS ---
         fig = make_subplots(
             rows=2, cols=2,
             subplot_titles=("Capital Operativo", "Desgaste CNC", "Ingresos", "Análisis Combinado"),
@@ -441,32 +570,32 @@ elif menu == "📈 Gráficos Avanzados":
         )
         
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['capital'],
+            go.Scatter(x=df_graficos['created_at'], y=df_graficos['capital'],
                        name="Capital", line=dict(color="#64ffda", width=2),
                        fill='tozeroy', fillcolor='rgba(100, 255, 218, 0.1)'),
             row=1, col=1
         )
         
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['desgaste_cnc'],
+            go.Scatter(x=df_graficos['created_at'], y=df_graficos['desgaste_cnc'],
                        name="Desgaste CNC", line=dict(color="#ff6b6b", width=2),
                        fill='tozeroy', fillcolor='rgba(255, 107, 107, 0.1)'),
             row=1, col=2
         )
         
         fig.add_trace(
-            go.Bar(x=df['created_at'], y=df['ingreso'],
+            go.Bar(x=df_graficos['created_at'], y=df_graficos['ingreso'],
                    name="Ingresos", marker_color="#4a6cf7"),
             row=2, col=1
         )
         
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['capital'],
+            go.Scatter(x=df_graficos['created_at'], y=df_graficos['capital'],
                        name="Capital", line=dict(color="#64ffda", width=2)),
             row=2, col=2
         )
         fig.add_trace(
-            go.Scatter(x=df['created_at'], y=df['desgaste_cnc'] * 1000,
+            go.Scatter(x=df_graficos['created_at'], y=df_graficos['desgaste_cnc'] * 1000,
                        name="Desgaste (escalado)", line=dict(color="#ff6b6b", width=2, dash="dash")),
             row=2, col=2
         )
@@ -493,9 +622,9 @@ elif menu == "📈 Gráficos Avanzados":
             st.markdown(f"""
                 <div class="metric-container">
                     <div style="color: #8892b0;">Capital</div>
-                    <div style="color: #64ffda; font-weight: 700;">Mín: {df['capital'].min():,.0f} €</div>
-                    <div style="color: #64ffda; font-weight: 700;">Máx: {df['capital'].max():,.0f} €</div>
-                    <div style="color: #8892b0;">Media: {df['capital'].mean():,.0f} €</div>
+                    <div style="color: #64ffda; font-weight: 700;">Mín: {df_graficos['capital'].min():,.0f} €</div>
+                    <div style="color: #64ffda; font-weight: 700;">Máx: {df_graficos['capital'].max():,.0f} €</div>
+                    <div style="color: #8892b0;">Media: {df_graficos['capital'].mean():,.0f} €</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -503,9 +632,9 @@ elif menu == "📈 Gráficos Avanzados":
             st.markdown(f"""
                 <div class="metric-container">
                     <div style="color: #8892b0;">Desgaste CNC</div>
-                    <div style="color: #ff6b6b; font-weight: 700;">Mín: {df['desgaste_cnc'].min():.1f}%</div>
-                    <div style="color: #ff6b6b; font-weight: 700;">Máx: {df['desgaste_cnc'].max():.1f}%</div>
-                    <div style="color: #8892b0;">Media: {df['desgaste_cnc'].mean():.1f}%</div>
+                    <div style="color: #ff6b6b; font-weight: 700;">Mín: {df_graficos['desgaste_cnc'].min():.1f}%</div>
+                    <div style="color: #ff6b6b; font-weight: 700;">Máx: {df_graficos['desgaste_cnc'].max():.1f}%</div>
+                    <div style="color: #8892b0;">Media: {df_graficos['desgaste_cnc'].mean():.1f}%</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -513,14 +642,17 @@ elif menu == "📈 Gráficos Avanzados":
             st.markdown(f"""
                 <div class="metric-container">
                     <div style="color: #8892b0;">Ingresos</div>
-                    <div style="color: #4a6cf7; font-weight: 700;">Mín: {df['ingreso'].min():,.0f} €</div>
-                    <div style="color: #4a6cf7; font-weight: 700;">Máx: {df['ingreso'].max():,.0f} €</div>
-                    <div style="color: #8892b0;">Media: {df['ingreso'].mean():,.0f} €</div>
+                    <div style="color: #4a6cf7; font-weight: 700;">Mín: {df_graficos['ingreso'].min():,.0f} €</div>
+                    <div style="color: #4a6cf7; font-weight: 700;">Máx: {df_graficos['ingreso'].max():,.0f} €</div>
+                    <div style="color: #8892b0;">Media: {df_graficos['ingreso'].mean():,.0f} €</div>
                 </div>
             """, unsafe_allow_html=True)
     else:
         st.info("💡 No hay datos suficientes para mostrar gráficos")
 
+# ---------------------------------------------------------
+# 10. MENÚ: TABLA DE REGISTROS
+# ---------------------------------------------------------
 elif menu == "📋 Tabla de Registros":
     st.markdown("### 📋 Historial Completo en Bruto")
     st.markdown("*Tabla detallada con todos los registros volcados de forma autónoma por el worker*")
@@ -542,8 +674,13 @@ elif menu == "📋 Tabla de Registros":
         if max_desgaste < 100:
             df_filtrado = df_filtrado[df_filtrado['desgaste_cnc'] <= max_desgaste]
         
+        # --- TABLA CON COLORES EN DESGASTE ---
+        styled_df = df_filtrado.sort_values(by="created_at", ascending=False).style.applymap(
+            color_desgaste, subset=['desgaste_cnc']
+        )
+        
         st.dataframe(
-            df_filtrado.sort_values(by="created_at", ascending=False),
+            styled_df,
             use_container_width=True,
             column_config={
                 "id": "ID",
@@ -569,6 +706,9 @@ elif menu == "📋 Tabla de Registros":
     else:
         st.warning("No hay registros disponibles")
 
+# ---------------------------------------------------------
+# 11. MENÚ: SIMULACIÓN Y CONTROL
+# ---------------------------------------------------------
 elif menu == "🕹️ Simulación y Control":
     st.markdown("### 🕹️ Panel de Simulación y Control Activo")
     st.markdown("*Interactúa directamente con la línea de producción enviando eventos personalizados*")
@@ -612,7 +752,7 @@ elif menu == "🕹️ Simulación y Control":
                     try:
                         supabase.table("registros").insert({
                             "capital": round(nuevo_capital, 2),
-                            "ingreso": 1500.0,  # Ingreso mínimo de soporte para evitar ceros
+                            "ingreso": 1500.0,
                             "desgaste_cnc": round(nuevo_desgaste, 2)
                         }).execute()
                         st.success("✅ ¡Avería simulada con éxito!")
@@ -655,7 +795,7 @@ elif menu == "🕹️ Simulación y Control":
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 7. BUCLE DE AUTO-REFRESCO
+# 12. BUCLE DE AUTO-REFRESCO
 # ---------------------------------------------------------
 if auto_refresh:
     time.sleep(10)
