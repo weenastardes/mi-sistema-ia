@@ -88,7 +88,6 @@ st.markdown("""
             padding: 15px;
             border: 1px solid rgba(42, 47, 69, 0.3);
         }
-        /* Estado de conexión */
         .status-connected {
             display: flex;
             align-items: center;
@@ -143,7 +142,6 @@ def color_desgaste(val):
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
-# Credenciales de Correo desde los Secrets de Streamlit
 EMAIL_SENDER = st.secrets.get("EMAIL_SENDER", "")
 EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD", "")
 EMAIL_RECEIVER = st.secrets.get("EMAIL_RECEIVER", "")
@@ -162,7 +160,6 @@ supabase = init_supabase()
 # 4. FUNCIONES DE UTILIDAD Y NOTIFICACIONES POR CORREO
 # ---------------------------------------------------------
 def enviar_alerta_correo(asunto, cuerpo):
-    """Envía un correo electrónico utilizando la configuración SMTP de los secrets."""
     if not EMAIL_SENDER or not EMAIL_PASSWORD or not EMAIL_RECEIVER:
         return False  
     
@@ -171,7 +168,6 @@ def enviar_alerta_correo(asunto, cuerpo):
         msg['From'] = EMAIL_SENDER
         msg['To'] = EMAIL_RECEIVER
         msg['Subject'] = asunto
-        
         msg.attach(MIMEText(cuerpo, 'plain'))
         
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
@@ -188,7 +184,6 @@ def cargar_datos_frescos():
     if not supabase:
         return pd.DataFrame()
     try:
-        # Se añade un límite de 10000 para superar el tope por defecto de 1000 registros
         response = supabase.table("registros").select("*").order("created_at", desc=False).limit(10000).execute()
         if response.data:
             df = pd.DataFrame(response.data)
@@ -207,6 +202,9 @@ def get_estado_empresa(df):
         'capital': float(ultimo.get("capital", 150000.0)),
         'ingreso': float(ultimo.get("ingreso", 0.0)),
         'desgaste_cnc': float(ultimo.get("desgaste_cnc", 10.0)),
+        'temperatura_cnc': float(ultimo.get("temperatura_cnc", 50.0)),
+        'oee': float(ultimo.get("oee", 85.0)),
+        'coste_mantenimiento': float(ultimo.get("coste_mantenimiento", 0.0)),
         'fecha': ultimo.get("created_at", datetime.now())
     }
 
@@ -217,9 +215,9 @@ def calcular_metricas(estado):
     coste_estandar = 4000.0
     margen_valor = estado['ingreso'] - coste_estandar
     margen_porcentaje = (margen_valor / coste_estandar) * 100 if coste_estandar > 0 else 0.0
-    oee_planta = max(40.0, 98.5 - (estado['desgaste_cnc'] * 0.45))
+    oee_planta = estado.get('oee', 85.0)
     
-    if estado['desgaste_cnc'] >= 75.0:
+    if estado['desgaste_cnc'] >= 75.0 or estado.get('temperatura_cnc', 0) > 85.0:
         riesgo = ("🚨 CRÍTICO", "badge-critical")
     elif estado['desgaste_cnc'] >= 50.0:
         riesgo = ("⚠️ PRECAUCIÓN", "badge-warning")
@@ -268,13 +266,12 @@ def crear_grafico_gauge(valor, titulo, min_val=0, max_val=100):
     return fig
 
 # ---------------------------------------------------------
-# 5. CARGA DE DATOS Y COMPROBACIÓN DE NOTIFICACIÓN POR CADA NUEVO DATO
+# 5. CARGA DE DATOS Y COMPROBACIÓN DE NOTIFICACIÓN
 # ---------------------------------------------------------
 df = cargar_datos_frescos()
 estado = get_estado_empresa(df)
 metricas = calcular_metricas(estado) if estado else {}
 
-# Calcular tendencias si hay datos
 if not df.empty and len(df) > 1:
     tendencia_capital, cambio_capital = calcular_tendencia(df, 'capital')
     tendencia_desgaste, cambio_desgaste = calcular_tendencia(df, 'desgaste_cnc')
@@ -283,7 +280,6 @@ else:
     tendencia_capital = tendencia_desgaste = tendencia_ingreso = "→"
     cambio_capital = cambio_desgaste = cambio_ingreso = 0
 
-# ENVÍO DE CORREO AUTOMÁTICO CADA VEZ QUE LLEGA UN NUEVO REGISTRO
 if estado and not df.empty:
     ultimo_id = int(df.iloc[-1].get("id", 0))
     
@@ -292,9 +288,9 @@ if estado and not df.empty:
 
     if st.session_state["ultimo_correo_id"] != ultimo_id:
         desgaste_val = estado['desgaste_cnc']
+        temp_val = estado['temperatura_cnc']
         
-        # Determinar si la fábrica está en estado óptimo o no
-        if desgaste_val >= 75.0:
+        if desgaste_val >= 75.0 or temp_val > 85.0:
             estado_fabrica = "🚨 CRÍTICO"
             es_optimo = "No (Riesgo Crítico)"
         elif desgaste_val >= 50.0:
@@ -305,7 +301,7 @@ if estado and not df.empty:
             es_optimo = "Sí (Funcionamiento Óptimo)"
             
         asunto = f"🏭 Reporte Industrias 24/7 - Registro #{ultimo_id}"
-        cuerpo = f"""Hola,\n\nSe ha recibido una nueva entrada de datos en el sistema:\n\n- ID de Registro: {ultimo_id}\n- Estado de la Fábrica: {estado_fabrica} (Óptimo: {es_optimo})\n- Desgaste CNC: {desgaste_val:.1f}%\n- Ingresos Recientes: {estado['ingreso']:,.0f} €\n- Capital Operativo: {estado['capital']:,.0f} €\n- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\nPuedes consultar el panel completo en línea."""
+        cuerpo = f"""Hola,\n\nSe ha recibido una nueva entrada de datos en el sistema:\n\n- ID de Registro: {ultimo_id}\n- Estado de la Fábrica: {estado_fabrica}\n- Desgaste CNC: {desgaste_val:.1f}%\n- Temperatura CNC: {temp_val:.1f} °C\n- Eficiencia OEE: {estado['oee']:.1f}%\n- Ingresos Recientes: {estado['ingreso']:,.0f} €\n- Capital Operativo: {estado['capital']:,.0f} €\n- Fecha y hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"""
         
         exito = enviar_alerta_correo(asunto, cuerpo)
         if exito:
@@ -388,7 +384,6 @@ with st.sidebar:
     else:
         st.warning("⏳ Esperando datos del worker...")
     
-    # --- INDICADOR DE CONEXIÓN A SUPABASE ---
     st.markdown("---")
     st.markdown("### 🔌 Estado del Sistema")
     
@@ -413,7 +408,6 @@ with st.sidebar:
 # ---------------------------------------------------------
 # 7. CONTENIDO PRINCIPAL
 # ---------------------------------------------------------
-
 st.markdown("""
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <div>
@@ -435,7 +429,7 @@ if menu == "📊 Dashboard y KPIs":
     
     if df.empty:
         st.warning("⏳ Esperando datos del worker autónomo en Supabase...")
-        st.info("💡 El worker se ejecuta automáticamente cada 10 minutos a través de GitHub Actions")
+        st.info("💡 El worker se ejecuta automáticamente cada poco tiempo en Render.")
     else:
         col1, col2, col3, col4 = st.columns(4)
         
@@ -466,11 +460,15 @@ if menu == "📊 Dashboard y KPIs":
             """, unsafe_allow_html=True)
         
         with col3:
+            temp_cnc = estado.get('temperatura_cnc', 50.0)
+            color_temp = "metric-delta-negative" if temp_cnc > 85 else "metric-delta"
             st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-label">📈 OEE Planta</div>
-                    <div class="metric-value">{metricas['oee_planta']:.1f}%</div>
-                    <div class="metric-delta">Eficiencia global</div>
+                    <div class="metric-label">🔥 Temperatura CNC</div>
+                    <div class="metric-value">{temp_cnc:.1f} °C</div>
+                    <div class="{color_temp}">
+                        OEE Planta: {metricas['oee_planta']:.1f}%
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -480,7 +478,7 @@ if menu == "📊 Dashboard y KPIs":
                 <div class="metric-card">
                     <div class="metric-label">🚨 Nivel de Riesgo</div>
                     <div class="metric-value" style="font-size: 1.5rem;">{riesgo_text}</div>
-                    <div class="metric-delta">Basado en desgaste CNC</div>
+                    <div class="metric-delta">Basado en desgaste y temperatura</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -499,9 +497,9 @@ if menu == "📊 Dashboard y KPIs":
         with col6:
             st.markdown(f"""
                 <div class="metric-container">
-                    <div style="color: #8892b0; font-size: 0.85rem;">🔧 Salud Maquinaria</div>
-                    <div style="color: #4a6cf7; font-size: 1.8rem; font-weight: 700;">{metricas['salud']:.0f}%</div>
-                    <div style="color: #8892b0; font-size: 0.9rem;">Índice de condición</div>
+                    <div style="color: #8892b0; font-size: 0.85rem;">🔧 Mantenimiento Extra</div>
+                    <div style="color: #ff6b6b; font-size: 1.8rem; font-weight: 700;">{estado.get('coste_mantenimiento', 0.0):,.0f} €</div>
+                    <div style="color: #8892b0; font-size: 0.9rem;">Coste aplicado en ciclo</div>
                 </div>
             """, unsafe_allow_html=True)
         
@@ -523,11 +521,11 @@ if menu == "📊 Dashboard y KPIs":
             st.plotly_chart(fig1, use_container_width=True)
         
         with col_g2:
-            fig2 = crear_grafico_gauge(metricas['salud'], "Salud Maquinaria")
+            fig2 = crear_grafico_gauge(estado.get('temperatura_cnc', 50.0), "Temperatura CNC (°C)", 30, 100)
             st.plotly_chart(fig2, use_container_width=True)
         
         with col_g3:
-            fig3 = crear_grafico_gauge(metricas['oee_planta'], "OEE Planta")
+            fig3 = crear_grafico_gauge(metricas['oee_planta'], "OEE Planta (%)")
             st.plotly_chart(fig3, use_container_width=True)
 
 # ---------------------------------------------------------
@@ -542,34 +540,31 @@ elif menu == "📈 Gráficos Avanzados":
         with col_fecha1:
             fecha_inicio = st.date_input(
                 "Fecha de inicio", 
-                value=df['created_at'].min() if not df.empty else datetime.now()
+                value=df['created_at'].min().date() if not df.empty else datetime.now().date()
             )
         with col_fecha2:
             fecha_fin = st.date_input(
                 "Fecha de fin", 
-                value=df['created_at'].max() if not df.empty else datetime.now()
+                value=df['created_at'].max().date() if not df.empty else datetime.now().date()
             )
         
-        if not df.empty:
-            df_filtrado_fechas = df[
-                (df['created_at'].dt.date >= fecha_inicio) & 
-                (df['created_at'].dt.date <= fecha_fin)
-            ]
-            
-            if df_filtrado_fechas.empty:
-                st.warning("⚠️ No hay datos en el rango de fechas seleccionado")
-                df_graficos = df
-            else:
-                df_graficos = df_filtrado_fechas
-                st.success(f"✅ Mostrando {len(df_graficos)} registros en el rango seleccionado")
-        else:
+        df_filtrado_fechas = df[
+            (df['created_at'].dt.date >= fecha_inicio) & 
+            (df['created_at'].dt.date <= fecha_fin)
+        ]
+        
+        if df_filtrado_fechas.empty:
+            st.warning("⚠️ No hay datos en el rango de fechas seleccionado")
             df_graficos = df
+        else:
+            df_graficos = df_filtrado_fechas
+            st.success(f"✅ Mostrando {len(df_graficos)} registros en el rango seleccionado")
         
         fig = make_subplots(
             rows=2, cols=2,
-            subplot_titles=("Capital Operativo", "Desgaste CNC", "Ingresos", "Análisis Combinado"),
-            specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                   [{"secondary_y": False}, {"secondary_y": True}]]
+            subplot_titles=("Capital Operativo", "Desgaste y Temperatura CNC", "Ingresos", "Eficiencia OEE"),
+            specs=[[{"secondary_y": False}, {"secondary_y": True}],
+                   [{"secondary_y": False}, {"secondary_y": False}]]
         )
         
         fig.add_trace(
@@ -581,10 +576,15 @@ elif menu == "📈 Gráficos Avanzados":
         
         fig.add_trace(
             go.Scatter(x=df_graficos['created_at'], y=df_graficos['desgaste_cnc'],
-                       name="Desgaste CNC", line=dict(color="#ff6b6b", width=2),
-                       fill='tozeroy', fillcolor='rgba(255, 107, 107, 0.1)'),
+                       name="Desgaste CNC (%)", line=dict(color="#ff6b6b", width=2)),
             row=1, col=2
         )
+        if 'temperatura_cnc' in df_graficos.columns:
+            fig.add_trace(
+                go.Scatter(x=df_graficos['created_at'], y=df_graficos['temperatura_cnc'],
+                           name="Temp CNC (°C)", line=dict(color="#ffa500", width=2, dash="dot")),
+                row=1, col=2, secondary_y=True
+            )
         
         fig.add_trace(
             go.Bar(x=df_graficos['created_at'], y=df_graficos['ingreso'],
@@ -592,16 +592,12 @@ elif menu == "📈 Gráficos Avanzados":
             row=2, col=1
         )
         
-        fig.add_trace(
-            go.Scatter(x=df_graficos['created_at'], y=df_graficos['capital'],
-                       name="Capital", line=dict(color="#64ffda", width=2)),
-            row=2, col=2
-        )
-        fig.add_trace(
-            go.Scatter(x=df_graficos['created_at'], y=df_graficos['desgaste_cnc'] * 1000,
-                       name="Desgaste (escalado)", line=dict(color="#ff6b6b", width=2, dash="dash")),
-            row=2, col=2
-        )
+        if 'oee' in df_graficos.columns:
+            fig.add_trace(
+                go.Scatter(x=df_graficos['created_at'], y=df_graficos['oee'],
+                           name="OEE (%)", line=dict(color="#64ffda", width=2)),
+                row=2, col=2
+            )
         
         fig.update_layout(
             height=600,
@@ -681,7 +677,6 @@ elif menu == "📋 Tabla de Registros":
             color_desgaste, subset=['desgaste_cnc']
         )
         
-        # --- CONFIGURACIÓN DE PANTALLA DE FILAS (NUEVO) ---
         col_pag1, col_pag2 = st.columns([2, 2])
         with col_pag1:
             num_filas = st.selectbox("Número de filas a mostrar:", [10, 25, 50, 100, "Todas"], index=0)
@@ -699,7 +694,10 @@ elif menu == "📋 Tabla de Registros":
                 "created_at": "Fecha",
                 "capital": st.column_config.NumberColumn("Capital", format="%.2f €"),
                 "ingreso": st.column_config.NumberColumn("Ingreso", format="%.2f €"),
-                "desgaste_cnc": st.column_config.NumberColumn("Desgaste CNC", format="%.1f %%")
+                "desgaste_cnc": st.column_config.NumberColumn("Desgaste CNC", format="%.1f %%"),
+                "temperatura_cnc": st.column_config.NumberColumn("Temp CNC", format="%.1f °C"),
+                "oee": st.column_config.NumberColumn("OEE", format="%.1f %%"),
+                "coste_mantenimiento": st.column_config.NumberColumn("Mantenimiento", format="%.2f €")
             }
         )
         
@@ -750,7 +748,7 @@ elif menu == "🕹️ Simulación y Control":
             st.markdown("""
                 <div style="background: rgba(255, 107, 107, 0.1); padding: 20px; border-radius: 10px; border: 1px solid rgba(255, 107, 107, 0.3);">
                     <h4 style="color: #ff6b6b;">🚨 Simular Fallo Crítico</h4>
-                    <p style="color: #8892b0; font-size: 0.9rem;">Fuerza un fallo mecánico imprevisto que eleva el desgaste y genera costes extraordinarios.</p>
+                    <p style="color: #8892b0; font-size: 0.9rem;">Fuerza un fallo mecánico imprevisto que eleva el desgaste, la temperatura y genera costes.</p>
             """, unsafe_allow_html=True)
             
             with st.form("fallo_form"):
@@ -760,12 +758,17 @@ elif menu == "🕹️ Simulación y Control":
                 
                 if submitted:
                     nuevo_desgaste = min(100.0, desg_base + intensidad)
+                    nueva_temp = 50.0 + (nuevo_desgaste * 1.05)
                     nuevo_capital = cap_base - coste
+                    nuevo_oee = max(20.0, 100.0 - (nuevo_desgaste * 1.1))
                     try:
                         supabase.table("registros").insert({
                             "capital": round(nuevo_capital, 2),
                             "ingreso": 1500.0,
-                            "desgaste_cnc": round(nuevo_desgaste, 2)
+                            "desgaste_cnc": round(nuevo_desgaste, 2),
+                            "temperatura_cnc": round(nueva_temp, 2),
+                            "oee": round(nuevo_oee, 2),
+                            "coste_mantenimiento": float(coste)
                         }).execute()
                         st.success("✅ ¡Avería simulada con éxito!")
                         st.info(f"📊 Desgaste: {desg_base:.1f}% → {nuevo_desgaste:.1f}% | Capital: {cap_base:,.0f}€ → {nuevo_capital:,.0f}€")
@@ -779,7 +782,7 @@ elif menu == "🕹️ Simulación y Control":
             st.markdown("""
                 <div style="background: rgba(100, 255, 218, 0.1); padding: 20px; border-radius: 10px; border: 1px solid rgba(100, 255, 218, 0.3);">
                     <h4 style="color: #64ffda;">🔧 Aplicar Mantenimiento</h4>
-                    <p style="color: #8892b0; font-size: 0.9rem;">Envía al equipo técnico a reparar el sistema: reduce el desgaste aplicando el coste de reparación.</p>
+                    <p style="color: #8892b0; font-size: 0.9rem;">Envía al equipo técnico a reparar el sistema: reduce el desgaste y estabiliza la temperatura.</p>
             """, unsafe_allow_html=True)
             
             with st.form("mantenimiento_form"):
@@ -790,13 +793,17 @@ elif menu == "🕹️ Simulación y Control":
                 if submitted:
                     reduccion = (desg_base * nivel_reparacion) / 100
                     nuevo_desgaste = max(5.0, desg_base - reduccion)
+                    nueva_temp = 40.0 + (nuevo_desgaste * 1.05)
                     nuevo_capital = cap_base - coste_mantenimiento
-                    ingreso_reparacion = 4500.0
+                    nuevo_oee = max(20.0, 100.0 - (nuevo_desgaste * 1.1))
                     try:
                         supabase.table("registros").insert({
                             "capital": round(nuevo_capital, 2),
-                            "ingreso": round(ingreso_reparacion, 2),
-                            "desgaste_cnc": round(nuevo_desgaste, 2)
+                            "ingreso": 4500.0,
+                            "desgaste_cnc": round(nuevo_desgaste, 2),
+                            "temperatura_cnc": round(nueva_temp, 2),
+                            "oee": round(nuevo_oee, 2),
+                            "coste_mantenimiento": float(coste_mantenimiento)
                         }).execute()
                         st.success("✅ ¡Mantenimiento aplicado con éxito!")
                         st.info(f"📊 Desgaste: {desg_base:.1f}% → {nuevo_desgaste:.1f}% | Capital: {cap_base:,.0f}€ → {nuevo_capital:,.0f}€")
