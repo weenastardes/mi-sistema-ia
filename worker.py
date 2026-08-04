@@ -39,12 +39,13 @@ class MonitorSistema:
         self.resend_key = os.getenv('RESEND_API_KEY')
         self.zona_canarias = pytz.timezone('Atlantic/Canary')
         
-        # Umbrales ajustados para evitar falsos positivos constantes
-        self.umbral_desgaste_alto = 50.0  # Subido a 50 para que salte solo en desgaste serio
+        # Umbrales ajustados para control industrial
+        self.umbral_desgaste_alto = 50.0  
         self.umbral_desgaste_bajo = 5.0
         self.umbral_capital_minimo = 145000.0
         self.umbral_ingreso_bajo = 1200.0
-        self.umbral_ingreso_alto = 9000.0  # Para detectar picos positivos de ganancia
+        self.umbral_ingreso_alto = 9000.0  
+        self.umbral_temperatura_alta = 85.0 # Nueva alerta de temperatura
         
         # Control de tiempo para evitar spam de correos (Cooldown de 30 minutos)
         self.ultimo_correo_enviado = None
@@ -64,6 +65,12 @@ class MonitorSistema:
         
         desgaste_base = random.uniform(5, 55)
         
+        # 1. Generar Temperatura del motor proporcional al desgaste (entre ~44°C y ~97°C)
+        temperatura_cnc = round(40.0 + (desgaste_base * 1.05) + random.uniform(-2, 2), 1)
+        
+        # 2. Cálculo de OEE (Eficiencia Global del Equipo): porcentaje basado en el desgaste
+        oee = round(max(20.0, 100.0 - (desgaste_base * 1.1) + random.uniform(-3, 3)), 1)
+        
         if desgaste_base > 40:
             ingreso = random.uniform(1500, 3500)
         elif desgaste_base > 25:
@@ -75,7 +82,13 @@ class MonitorSistema:
         else:
             ingreso = random.uniform(8000, 10000)
         
-        nuevo_capital = capital_anterior + ingreso - (desgaste_base * 40)
+        # 3. Coste de mantenimiento extra si el desgaste supera el umbral crítico
+        coste_mantenimiento = 0.0
+        if desgaste_base >= 50.0:
+            coste_mantenimiento = 2500.0 
+        
+        # Capital considerando ingresos, desgaste y mantenimiento de emergencia
+        nuevo_capital = capital_anterior + ingreso - (desgaste_base * 40) - coste_mantenimiento
         
         if nuevo_capital < 150000:
             nuevo_capital = nuevo_capital + 10000
@@ -86,15 +99,23 @@ class MonitorSistema:
             'capital': round(nuevo_capital, 2),
             'ingreso': round(ingreso, 2),
             'desgaste_cnc': round(desgaste_base, 2),
+            'temperatura_cnc': temperatura_cnc,
+            'oee': oee,
+            'coste_mantenimiento': round(coste_mantenimiento, 2),
             'created_at': fecha_canarias
         }
 
     def verificar_anomalias(self, registro):
         anomalias = []
         
-        # Solo consideramos anomalías de peso real para notificaciones
         if registro['desgaste_cnc'] > self.umbral_desgaste_alto:
             anomalias.append(f"⚠️ ALERTA CRÍTICA: Desgaste CNC elevado ({registro['desgaste_cnc']:.1f}%)")
+        
+        if registro['temperatura_cnc'] > self.umbral_temperatura_alta:
+            anomalias.append(f"🔥 RIESGO SOBRECALENTAMIENTO: Temperatura del motor a {registro['temperatura_cnc']:.1f}°C")
+            
+        if registro['coste_mantenimiento'] > 0:
+            anomalias.append(f"🔧 GASTO DE MANTENIMIENTO: Reparación aplicada por {registro['coste_mantenimiento']:,.2f} €")
         
         if registro['capital'] < self.umbral_capital_minimo:
             anomalias.append(f"⚠️ ALERTA CRÍTICA: Capital bajo operativo ({registro['capital']:,.2f} €)")
@@ -113,10 +134,9 @@ class MonitorSistema:
             
             self.supabase.table('registros').insert(registro).execute()
             
-            logger.info(f"✅ Registro guardado: Capital: {registro['capital']:,.2f}, Ingreso: {registro['ingreso']:,.2f}, Desgaste: {registro['desgaste_cnc']:.1f}%")
+            logger.info(f"✅ Registro guardado: Capital: {registro['capital']:,.2f}, Ingreso: {registro['ingreso']:,.2f}, Desgaste: {registro['desgaste_cnc']:.1f}%, Temp: {registro['temperatura_cnc']}°C, OEE: {registro['oee']}%")
             
             if anomalias and self.email_user and self.resend_key:
-                # Comprobación de Cooldown: ¿Ha pasado suficiente tiempo desde el último correo?
                 ahora = datetime.now(self.zona_canarias)
                 debe_enviar = False
                 
@@ -151,9 +171,12 @@ class MonitorSistema:
             <p><b>Capital Actual:</b> ${registro['capital']:,.2f}</p>
             <p><b>Ingreso del Ciclo:</b> ${registro['ingreso']:,.2f}</p>
             <p><b>Desgaste CNC:</b> {registro['desgaste_cnc']:.1f}%</p>
+            <p><b>Temperatura CNC:</b> {registro['temperatura_cnc']:.1f}°C</p>
+            <p><b>Eficiencia OEE:</b> {registro['oee']:.1f}%</p>
+            <p><b>Costes de Mantenimiento:</b> ${registro['coste_mantenimiento']:,.2f}</p>
             <h3>🔍 Detalles del Evento:</h3>
             <ul>{lista_html}</ul>
-            <p style="color: #666; font-size: 12px;">Este es un aviso automatizado. Se aplicó un filtro de intervalo para evitar notificaciones repetitivas.</p>
+            <p style="color: #666; font-size: 12px;">Este es un aviso automatizado con control de intervalo inteligente.</p>
             """
 
             headers = {
@@ -164,7 +187,7 @@ class MonitorSistema:
             data = {
                 "from": "onboarding@resend.dev",
                 "to": self.email_user,
-                "subject": f"🏭 Reporte Destacado Industrias {datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M')}",
+                "subject": f"🏭 Reporte Industrial {datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M')}",
                 "html": html_content
             }
 
