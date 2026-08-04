@@ -5,7 +5,7 @@ import pytz
 import time
 import threading
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from supabase import create_client, Client
 
@@ -39,11 +39,16 @@ class MonitorSistema:
         self.resend_key = os.getenv('RESEND_API_KEY')
         self.zona_canarias = pytz.timezone('Atlantic/Canary')
         
-        # Umbrales para anomalías
-        self.umbral_desgaste_alto = 30
-        self.umbral_desgaste_bajo = 5
-        self.umbral_capital_minimo = 150000
-        self.umbral_ingreso_bajo = 1000
+        # Umbrales ajustados para evitar falsos positivos constantes
+        self.umbral_desgaste_alto = 50.0  # Subido a 50 para que salte solo en desgaste serio
+        self.umbral_desgaste_bajo = 5.0
+        self.umbral_capital_minimo = 145000.0
+        self.umbral_ingreso_bajo = 1200.0
+        self.umbral_ingreso_alto = 9000.0  # Para detectar picos positivos de ganancia
+        
+        # Control de tiempo para evitar spam de correos (Cooldown de 30 minutos)
+        self.ultimo_correo_enviado = None
+        self.cooldown_minutos = 30
 
     def obtener_capital_anterior(self):
         try:
@@ -57,10 +62,8 @@ class MonitorSistema:
     def generar_registro(self):
         capital_anterior = self.obtener_capital_anterior()
         
-        # Ampliado hasta 55 para garantizar que salten alertas de desgaste alto y probar los correos
         desgaste_base = random.uniform(5, 55)
         
-        # Ajuste de ingresos: se garantiza un suelo mínimo incluso en desgaste alto para evitar ceros
         if desgaste_base > 40:
             ingreso = random.uniform(1500, 3500)
         elif desgaste_base > 25:
@@ -77,7 +80,6 @@ class MonitorSistema:
         if nuevo_capital < 150000:
             nuevo_capital = nuevo_capital + 10000
         
-        # Formato de texto plano con la hora exacta de Canarias (sin desfase UTC)
         fecha_canarias = datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M:%S')
         
         return {
@@ -90,16 +92,17 @@ class MonitorSistema:
     def verificar_anomalias(self, registro):
         anomalias = []
         
+        # Solo consideramos anomalías de peso real para notificaciones
         if registro['desgaste_cnc'] > self.umbral_desgaste_alto:
-            anomalias.append(f"⚠️ ALERTA: Desgaste CNC alto ({registro['desgaste_cnc']:.1f})")
-        elif registro['desgaste_cnc'] < self.umbral_desgaste_bajo:
-            anomalias.append(f"ℹ️ INFO: Desgaste CNC bajo ({registro['desgaste_cnc']:.1f})")
+            anomalias.append(f"⚠️ ALERTA CRÍTICA: Desgaste CNC elevado ({registro['desgaste_cnc']:.1f}%)")
         
         if registro['capital'] < self.umbral_capital_minimo:
-            anomalias.append(f"⚠️ ALERTA: Capital bajo ({registro['capital']:.2f})")
+            anomalias.append(f"⚠️ ALERTA CRÍTICA: Capital bajo operativo ({registro['capital']:,.2f} €)")
         
         if registro['ingreso'] < self.umbral_ingreso_bajo:
-            anomalias.append(f"⚠️ ALERTA: Ingreso muy bajo ({registro['ingreso']:.2f})")
+            anomalias.append(f"📉 AVISO: Ingreso bajo registrado ({registro['ingreso']:,.2f} €)")
+        elif registro['ingreso'] > self.umbral_ingreso_alto:
+            anomalias.append(f"📈 NOTICIA POSITIVA: ¡Pico de ingresos alto! ({registro['ingreso']:,.2f} €)")
         
         return anomalias
 
@@ -110,13 +113,28 @@ class MonitorSistema:
             
             self.supabase.table('registros').insert(registro).execute()
             
-            logger.info(f"✅ Registro guardado: Capital: {registro['capital']:.2f}, Ingreso: {registro['ingreso']:.2f}, Desgaste: {registro['desgaste_cnc']:.1f}")
+            logger.info(f"✅ Registro guardado: Capital: {registro['capital']:,.2f}, Ingreso: {registro['ingreso']:,.2f}, Desgaste: {registro['desgaste_cnc']:.1f}%")
             
             if anomalias and self.email_user and self.resend_key:
-                logger.info("🚨 ¡Anomalías detectadas! Intentando enviar correo mediante Resend...")
-                self.enviar_alerta(registro, anomalias)
+                # Comprobación de Cooldown: ¿Ha pasado suficiente tiempo desde el último correo?
+                ahora = datetime.now(self.zona_canarias)
+                debe_enviar = False
+                
+                if self.ultimo_correo_enviado is None:
+                    debe_enviar = True
+                else:
+                    tiempo_transcurrido = (ahora - self.ultimo_correo_enviado).total_seconds() / 60
+                    if tiempo_transcurrido >= self.cooldown_minutos:
+                        debe_enviar = True
+                    else:
+                        logger.info(f"⏳ Omitiendo envío de correo por Cooldown ({tiempo_transcurrido:.1f}m transcurridos de {self.cooldown_minutos}m requeridos).")
+
+                if debe_enviar:
+                    logger.info("🚨 ¡Anomalías detectadas y periodo de espera cumplido! Enviando correo...")
+                    self.enviar_alerta(registro, anomalias)
+                    self.ultimo_correo_enviado = ahora
             elif anomalias:
-                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) pero faltan credenciales de email o RESEND_API_KEY. User: {bool(self.email_user)}, Key: {bool(self.resend_key)}")
+                logger.warning(f"⚠️ Hay anomalías ({len(anomalias)}) pero faltan credenciales de email.")
             
             return True, anomalias
         except Exception as e:
@@ -128,13 +146,14 @@ class MonitorSistema:
             lista_html = "".join([f"<li>{a}</li>" for a in anomalias])
             
             html_content = f"""
-            <h2>🚨 Alerta del Sistema Industrial</h2>
+            <h2>🏭 Reporte Inteligente - Industrias 24/7</h2>
             <p><b>Fecha:</b> {registro['created_at']}</p>
-            <p><b>Capital:</b> ${registro['capital']:,.2f}</p>
-            <p><b>Ingreso:</b> ${registro['ingreso']:,.2f}</p>
+            <p><b>Capital Actual:</b> ${registro['capital']:,.2f}</p>
+            <p><b>Ingreso del Ciclo:</b> ${registro['ingreso']:,.2f}</p>
             <p><b>Desgaste CNC:</b> {registro['desgaste_cnc']:.1f}%</p>
-            <h3>⚠️ Anomalías detectadas:</h3>
+            <h3>🔍 Detalles del Evento:</h3>
             <ul>{lista_html}</ul>
+            <p style="color: #666; font-size: 12px;">Este es un aviso automatizado. Se aplicó un filtro de intervalo para evitar notificaciones repetitivas.</p>
             """
 
             headers = {
@@ -145,7 +164,7 @@ class MonitorSistema:
             data = {
                 "from": "onboarding@resend.dev",
                 "to": self.email_user,
-                "subject": f"🚨 ALERTA Sistema {datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M')}",
+                "subject": f"🏭 Reporte Destacado Industrias {datetime.now(self.zona_canarias).strftime('%Y-%m-%d %H:%M')}",
                 "html": html_content
             }
 
