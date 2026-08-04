@@ -188,7 +188,8 @@ def cargar_datos_frescos():
     if not supabase:
         return pd.DataFrame()
     try:
-        response = supabase.table("registros").select("*").order("created_at", desc=False).execute()
+        # Se añade un límite de 10000 para superar el tope por defecto de 1000 registros
+        response = supabase.table("registros").select("*").order("created_at", desc=False).limit(10000).execute()
         if response.data:
             df = pd.DataFrame(response.data)
             if 'created_at' in df.columns:
@@ -427,7 +428,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 8. MENÚ: DASHBOARD Y KPIs
+# 8. MENÚ: DASHBOARD Y KPIS
 # ---------------------------------------------------------
 if menu == "📊 Dashboard y KPIs":
     st.markdown("### 📊 KPIs Principales")
